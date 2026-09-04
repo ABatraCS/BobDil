@@ -1,0 +1,41 @@
+[package]
+name = "bobdil-kernel"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+description = "BobDil soft-real-time plant kernel: HID in, Modelica plant, force feedback out"
+license = "GPL-3.0-or-later"
+
+# No dependencies, on purpose.
+#
+# Everything this crate needs from the outside world is a handful of C symbols
+# already present on the platform: clock_nanosleep, shm_open/mmap, dlopen for
+# the FMU, and SDL3 for the wheel. Declaring those directly (src/sys/) rather
+# than pulling crates keeps the real-time process free of code we have not read,
+# lets `cargo build` work with no network, and removes any chance of a
+# transitive dependency allocating or locking on the hot path.
+[dependencies]
+
+[features]
+default = ["sdl3"]
+# Link against the system libSDL3 for wheel input and force feedback.
+# Disable for headless CI, where the null device stands in.
+sdl3 = []
+
+[lib]
+name = "bobdil_kernel"
+path = "src/lib.rs"
+
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+panic = "abort"
+debug = 1
+
+# The bench profile keeps debug symbols and disables LTO so that a profiler can
+# attribute step time to a subsystem, which is the whole point of rt_bench.
+[profile.bench]
+opt-level = 3
+debug = 2
