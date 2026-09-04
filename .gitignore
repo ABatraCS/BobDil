@@ -1,0 +1,49 @@
+# Generated artefacts, caches, and anything that describes one machine.
+#
+# The rule this file follows: if a command in `make help` can recreate it, it
+# does not belong in the repository. That includes every compiled binary, every
+# FMU, and every measurement -- BobDil's validation numbers describe the box
+# they were taken on, so a checked-in one is a claim about a machine nobody
+# else has.
+#
+# Generated *bindings* are the deliberate exception and ARE tracked: the five
+# emitted from schema/bobdil_signals.yaml (kernel/src/generated/,
+# session/bobdil/generated/, view/scripts/generated/, include/, and
+# schema/generated/) are checked in so that a reader can see the bytes two
+# processes agree on without running the emitter, and `make codegen-check`
+# guards them against drift.
+
+# --- Rust -----------------------------------------------------------------
+kernel/target/
+
+# --- Python ---------------------------------------------------------------
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+
+# --- build output ---------------------------------------------------------
+# Everything under build/ is produced by a make target: FMUs and their unpacked
+# trees, recordings, and the symlinks that point at whichever cache key is
+# current.
+build/
+
+# --- Godot ----------------------------------------------------------------
+# Import caches and editor state. The project, its scenes and its scripts are
+# tracked; .godot/ is regenerated on open.
+view/.godot/
+view/android/
+
+# --- runtime / machine-specific -------------------------------------------
+*.log
+*.bdt
+/dev/shm/bobdil_*
+
+# --- editor and OS --------------------------------------------------------
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
