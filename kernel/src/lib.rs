@@ -26,6 +26,7 @@ pub mod loop_runner;
 pub mod metrics;
 pub mod plant;
 pub mod pose;
+pub mod replay;
 pub mod sys;
 pub mod telemetry;
 pub mod transport;
