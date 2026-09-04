@@ -19,8 +19,10 @@
 //! `plant/`. That is what makes the physics kernel swappable and the device
 //! layer testable without a wheel plugged in.
 
+pub mod config;
 pub mod generated;
 pub mod io;
+pub mod loop_runner;
 pub mod metrics;
 pub mod plant;
 pub mod pose;
