@@ -1,0 +1,118 @@
+# The Modelica toolchain that can actually build BobLib.
+#
+# BobLib needs MSL 4.1.0 and VehicleInterfaces 2.0.2. Distribution OpenModelica
+# packages generally ship MSL 3.2.3 and no VehicleInterfaces at all, so on a
+# stock machine `make fixture-fmu` works and `make vehicle-fmu` cannot -- which
+# is exactly what `make doctor` reports. This image closes that gap, and it is
+# the *only* thing it does: the kernel is built by docker/Dockerfile.kernel and
+# the two are kept apart so that neither rebuilds when the other changes.
+#
+# The layers below are BobSim's, deliberately. A BobDil FMU and a BobSim FMU
+# have to be built by the same compiler and the same library versions or the two
+# repositories' results cannot be compared at all -- and comparison against
+# BobSim's maneuver suite is the gate that admits a kernel to the ladder
+# (architecture.md 8). Bump this image and BobSim's Dockerfile together.
+
+FROM openmodelica/openmodelica:v1.26.3-ompython
+
+# BobSim's image pins 3.11; BobDil's requirements-dev.txt needs 3.12 or newer
+# (numpy 2.5, scipy 1.18). Pinned as an ARG so the version is in one place, and
+# bumped alongside requirements-dev.txt rather than independently of it.
+ARG PYTHON_VERSION=3.13
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONUNBUFFERED=1
+ENV PIP_NO_CACHE_DIR=1
+ENV VIRTUAL_ENV=/opt/venv
+ENV PATH="/opt/venv/bin:${PATH}"
+
+WORKDIR /workspace
+
+# The base image has omc but does not necessarily keep its apt source enabled,
+# which blocks installing anything else from it later.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    curl \
+    gnupg \
+    && curl -fsSL https://build.openmodelica.org/apt/openmodelica.asc | \
+        gpg --dearmor -o /usr/share/keyrings/openmodelica-keyring.gpg \
+    && . /etc/os-release \
+    && OM_CODENAME="${VERSION_CODENAME:-${UBUNTU_CODENAME}}" \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/openmodelica-keyring.gpg] https://build.openmodelica.org/apt ${OM_CODENAME} stable" \
+        > /etc/apt/sources.list.d/openmodelica.list \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git \
+    make \
+    software-properties-common \
+    tzdata \
+    && add-apt-repository -y ppa:deadsnakes/ppa \
+    && apt-get update && apt-get install -y --no-install-recommends \
+    "python${PYTHON_VERSION}" \
+    "python${PYTHON_VERSION}-dev" \
+    "python${PYTHON_VERSION}-venv" \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements-dev.txt /tmp/requirements-dev.txt
+
+RUN "python${PYTHON_VERSION}" -m venv "${VIRTUAL_ENV}" \
+    && python -m pip install --upgrade pip \
+    && python -m pip install -r /tmp/requirements-dev.txt
+
+# Pre-fetch the package index with a generous timeout. omc's own curl timeout is
+# short, and a failure here surfaces much later as "library not found", which
+# reads like a model error rather than a network one.
+RUN mkdir -p /root/.openmodelica/libraries \
+    && curl -L \
+        --retry 10 \
+        --retry-delay 5 \
+        --connect-timeout 60 \
+        --max-time 600 \
+        -o /root/.openmodelica/libraries/index.json \
+        https://libraries.openmodelica.org/index/v1/index.json
+
+# Pinned exactly. An FMU built against a different MSL is a different car, and
+# `exactMatch` is what stops a silent minor-version bump from invalidating every
+# comparison made against an earlier build.
+RUN printf '\
+installPackage(Modelica, "4.1.0", exactMatch=true);\n\
+installPackage(VehicleInterfaces, "2.0.2", exactMatch=true);\n\
+getErrorString();\n' > /tmp/setup.mos \
+    && omc /tmp/setup.mos \
+    && rm /tmp/setup.mos \
+    && mkdir -p /usr/lib/omlibrary \
+    && cp -a /root/.openmodelica/libraries/. /usr/lib/omlibrary/ \
+    && chmod -R a+rX /usr/lib/omlibrary
+
+# Moved out of /root because the container runs as the *host's* user, not as
+# root -- see the `user:` key in compose.yml. installPackage puts libraries under
+# ~/.openmodelica, which a non-root user cannot read, and the failure surfaces
+# much later as "Modelica not found" rather than as a permission error.
+#
+# Copying alone is NOT enough, and believing otherwise cost a debugging session:
+# omc 1.26 builds MODELICAPATH from $HOME/.openmodelica/libraries and does not
+# consult /usr/lib/omlibrary at all, so a non-root run reported both libraries
+# MISSING while they sat readable on disk. OPENMODELICALIBRARY is what actually
+# sets the search path. Verified with `getModelicaPath()` under --network none,
+# which also proves omc is not quietly reaching the internet to paper over it.
+ENV OPENMODELICALIBRARY=/usr/lib/omlibrary
+
+# BobLib is mounted read-only, and git refuses to look at a repository it does
+# not own without this.
+RUN git config --global --add safe.directory /workspace \
+    && git config --global --add safe.directory /boblib \
+    && git config --global --add safe.directory /bobsim
+
+# The venv Python, so `make` inside the container uses the same interpreter the
+# image installed rather than looking for a .venv that is not mounted.
+ENV PYTHON=/opt/venv/bin/python
+ENV RUFF=/opt/venv/bin/ruff
+ENV BOBDIL_BOBLIB=/boblib
+ENV BOBDIL_BOBSIM=/bobsim
+# A writable HOME for a user that has no entry in /etc/passwd.
+ENV HOME=/tmp
+
+CMD ["/bin/bash"]

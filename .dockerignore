@@ -1,0 +1,13 @@
+# The images COPY exactly one file (requirements-dev.txt); everything else is
+# bind-mounted at /workspace when a container runs. Without this, every
+# `make omc-image` ships the whole tree -- 170 MB, most of it build output --
+# to the daemon before reading a single Dockerfile line.
+.git
+.venv
+build
+kernel/target
+view/.godot
+__pycache__
+*.pyc
+.pytest_cache
+.ruff_cache

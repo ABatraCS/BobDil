@@ -1,0 +1,66 @@
+# The kernel's build and test environment.
+#
+# Separate from Dockerfile.omc on purpose. The Modelica image is large and
+# changes when a library version does; the kernel image is small and changes
+# when the Rust toolchain does. Sharing one image would mean every Rust bump
+# reinstalls MSL, and every MSL bump rebuilds the kernel.
+#
+# This image is for *building and testing*. Driving from inside a container is
+# possible but is not the recommended path: the wheel is a USB HID device and
+# the loop wants SCHED_FIFO, and both are easier to get right on the host. See
+# the note in docker-compose.yml.
+
+# trixie, not bookworm: Debian 12 has no libsdl3-dev at all (SDL3 is newer than
+# that release), so a bookworm image can build the headless kernel and nothing
+# else -- and `make lint` clippies the SDL3 backend, so it would fail the gate
+# rather than skip it.
+FROM rust:1-trixie
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV CARGO_TERM_COLOR=always
+ENV VIRTUAL_ENV=/opt/venv
+ENV PATH="/opt/venv/bin:${PATH}"
+
+# libsdl3-dev for the wheel backend, python3-venv for the session layer and the
+# codegen emitters, and nothing else -- the kernel itself has no crate
+# dependencies at all (architecture.md 2), which is most of why this image is
+# small.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    libsdl3-dev \
+    make \
+    pkg-config \
+    python3 \
+    python3-venv \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN rustup component add clippy rustfmt
+
+# The venv lives at /opt/venv, NOT at ./.venv, and that is not a style choice.
+# The workspace is bind-mounted from the host, so a host .venv appears inside
+# the container -- with its interpreter symlinked to a host Python that does not
+# exist in here. `make venv` then fails on a directory it did not create, with
+# an error that points at a path that looks perfectly fine from the outside.
+# Building the environment outside the mount removes the collision entirely.
+COPY requirements-dev.txt /tmp/requirements-dev.txt
+RUN python3 -m venv "${VIRTUAL_ENV}" \
+    && python -m pip install --upgrade pip \
+    && python -m pip install -r /tmp/requirements-dev.txt
+
+# The makefile takes PYTHON and RUFF from the environment (`?=`), so these point
+# every target at the interpreter this image installed without the makefile
+# needing to know it is in a container.
+ENV PYTHON=/opt/venv/bin/python
+ENV RUFF=/opt/venv/bin/ruff
+
+# The container runs as the host's user (see compose.yml), which owns neither
+# /usr/local/cargo nor a home directory. Cargo needs somewhere writable even
+# though this kernel has no dependencies to fetch.
+ENV HOME=/tmp
+ENV CARGO_HOME=/tmp/cargo
+RUN mkdir -p /tmp/cargo && chmod 1777 /tmp/cargo
+
+WORKDIR /workspace
+
+CMD ["/bin/bash"]

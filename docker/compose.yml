@@ -1,0 +1,91 @@
+# Two services, because there are two toolchains and they have nothing to say
+# to each other: `omc` compiles a vehicle to an FMU, and `kernel` builds and
+# tests the Rust that runs one.
+#
+# BobLib and BobSim are mounted READ-ONLY, and that is a design rule rather
+# than caution (architecture.md 3): BobDil consumes both and writes to neither,
+# so a BobLib bump is never blocked on BobDil and BobDil can be cloned and
+# built on its own. Anything BobDil needs that BobLib does not provide lives in
+# modelica/BobDil/.
+#
+# Run from the repository root:
+#
+#   docker compose -f docker/compose.yml build omc
+#   docker compose -f docker/compose.yml run --rm omc make vehicle-fmu
+#   docker compose -f docker/compose.yml run --rm kernel make test
+#
+# or through the makefile, which is the same thing with the paths filled in:
+#
+#   make omc-image  vehicle-fmu
+#   make kernel-image  test-container
+
+# Both services run as the *invoking user*, not as root. The workspace is
+# bind-mounted, so a container running as root leaves root-owned build output,
+# FMU caches and target/ directories that the person who started it then cannot
+# delete -- and `make clean` fails on their own repository. The makefile fills
+# in BOBDIL_UID/BOBDIL_GID; the defaults below cover running compose by hand on
+# a typical single-user machine.
+#
+# The read-only mounts are written out in both services rather than shared
+# through a YAML anchor: an anchor can only splice a mapping, not extra entries
+# into a list, so the "clever" version is rejected by compose at parse time.
+
+services:
+  omc:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.omc
+      network: host
+    image: bobdyn/bobdil-omc:latest
+    user: "${BOBDIL_UID:-1000}:${BOBDIL_GID:-1000}"
+    volumes:
+      - ..:/workspace
+      # $BOBDIL_BOBLIB / $BOBDIL_BOBSIM if set, else the sibling checkouts the
+      # session layer already looks for. READ-ONLY: see the note above.
+      #
+      # The fallbacks are ../../ and not ../: compose resolves a relative host
+      # path against the directory holding this file, which is docker/, so a
+      # sibling of the repository is two levels up. Getting this wrong does not
+      # fail -- docker silently creates an empty directory and mounts that, and
+      # the build then reports BobLib as missing while the mount looks fine.
+      # `make vehicle-fmu` passes absolute paths instead, resolved by the same
+      # code the session layer uses.
+      - ${BOBDIL_BOBLIB:-../../BobLib}:/boblib:ro
+      - ${BOBDIL_BOBSIM:-../../BobSim}:/bobsim:ro
+    working_dir: /workspace
+    environment:
+      PYTHONPATH: /workspace/session:/workspace/tools:/workspace/codegen
+      BOBDIL_BOBLIB: /boblib
+      BOBDIL_BOBSIM: /bobsim
+    # No network is needed to compile a model, and not having one means a build
+    # cannot quietly depend on fetching something.
+    network_mode: none
+    stdin_open: true
+    tty: true
+
+  kernel:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.kernel
+      network: host
+    image: bobdyn/bobdil-kernel:latest
+    user: "${BOBDIL_UID:-1000}:${BOBDIL_GID:-1000}"
+    volumes:
+      - ..:/workspace
+      - ${BOBDIL_BOBLIB:-../../BobLib}:/boblib:ro
+      - ${BOBDIL_BOBSIM:-../../BobSim}:/bobsim:ro
+    working_dir: /workspace
+    environment:
+      PYTHONPATH: /workspace/session:/workspace/tools:/workspace/codegen
+    network_mode: none
+    # The two capabilities `make doctor` asks for. SYS_NICE lets the step thread
+    # take SCHED_FIFO; the memlock limit lets it pin the pages it touches. A
+    # container without them still runs and still holds the deadline on a
+    # machine of this class -- it just has a longer jitter tail, and `bench`
+    # says so rather than pretending otherwise.
+    cap_add:
+      - SYS_NICE
+    ulimits:
+      memlock: -1
+    stdin_open: true
+    tty: true
