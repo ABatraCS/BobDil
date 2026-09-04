@@ -7,6 +7,8 @@
 //! entire contract. Nothing outside this module knows whether the physics came
 //! from Modelica or from the built-in reduced model.
 
+pub mod fmi2;
+pub mod fmu_me;
 pub mod integrator;
 pub mod reduced;
 
