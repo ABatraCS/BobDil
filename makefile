@@ -109,7 +109,7 @@ help:
 	  'testing -- hermetic, no hardware, safe in CI' \
 	  '  make test            codegen drift + Python + kernel tests + every lint' \
 	  '  make test-python     parsers and step-bound maths (no Modelica needed)' \
-	  '  make test-kernel     74 Rust tests, headless (null device)' \
+	  '  make test-kernel     the Rust suite, headless (null device)' \
 	  '  make test-kernel-sdl3  the same tests with libSDL3 linked in' \
 	  '  make lint            ruff + clippy + rustfmt --check' \
 	  '  make fmt             rewrite Rust formatting in place' \
