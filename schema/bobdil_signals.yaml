@@ -1,0 +1,137 @@
+# BobDil signal schema -- THE single source of truth for every signal that
+# crosses a component boundary (BobDil/docs/architecture.md 1.7).
+#
+# codegen/ emits, from this file alone:
+#   kernel/src/generated/frames.rs     packed repr(C) structs for the RT path
+#   session/bobdil/generated/frames.py struct format strings + field offsets
+#   view/scripts/generated/frames.gd   byte offsets for the Godot seqlock reader
+#   include/bobdil_frames.h            C header for any native consumer
+#   schema/generated/*.proto           control-plane protobuf messages
+#   schema/generated/signals.json      FMI variable-name table for the FMU loader
+#
+# Adding a signal is one edit in this file. Never hand-edit a generated file.
+
+schema_version: 1
+
+# Bumped whenever the binary layout changes. Written into every shared-memory
+# segment header; a reader with a different value refuses to attach rather than
+# silently misinterpreting bytes.
+layout_revision: 1
+
+# Types are deliberately limited to 8-byte scalars. Every frame is then
+# naturally aligned with zero padding, which makes the Rust, C, Python and
+# GDScript views of the same bytes trivially identical.
+types:
+  f64: {rust: f64, c: double, py: d, gd: 8, proto: double}
+  u64: {rust: u64, c: uint64_t, py: Q, gd: 8, proto: uint64}
+  i64: {rust: i64, c: int64_t, py: q, gd: 8, proto: int64}
+
+frames:
+
+  driver_input:
+    doc: >-
+      What the driver is asking for, sampled by HidThread and read by StepThread
+      through a seqlock. The three *_command fields are exactly the inputs
+      BobLib.Experiments.Standards.VehicleFMI declares.
+    shm_name: bobdil_input
+    fields:
+      - {name: host_time_ns,               type: u64, unit: ns,  doc: CLOCK_MONOTONIC at sample time}
+      - {name: sample_index,               type: u64, unit: "-", doc: Monotonic HID sample counter}
+      - {name: steering_angle_command,     type: f64, unit: rad, fmi: steeringAngleCommand, doc: Handwheel angle, positive left}
+      - {name: accelerator_pedal_command,  type: f64, unit: "1", fmi: acceleratorPedalCommand, range: [0.0, 1.0]}
+      - {name: brake_pedal_command,        type: f64, unit: "1", fmi: brakePedalCommand, range: [0.0, 1.0]}
+      - {name: raw_steer_norm,             type: f64, unit: "1", range: [-1.0, 1.0], doc: Pre-calibration axis value, kept for replay forensics}
+      - {name: raw_accel_norm,             type: f64, unit: "1", range: [0.0, 1.0]}
+      - {name: raw_brake_norm,             type: f64, unit: "1", range: [0.0, 1.0]}
+      - {name: buttons,                    type: u64, unit: "-", doc: Button bitmask}
+
+  vehicle_state:
+    doc: >-
+      Everything the plant produced this step, plus what the kernel derived from
+      it. This is the frame the view renders, the telemetry recorder writes, and
+      replay compares. The fmi: keys name real VehicleFMI outputs; fields with no
+      fmi: key are computed by the kernel.
+    shm_name: bobdil_state
+    fields:
+      # --- step identity -------------------------------------------------
+      - {name: sim_time,             type: f64, unit: s,   doc: Plant time, advances by exactly dt per step}
+      - {name: step_index,           type: u64, unit: "-"}
+      - {name: host_time_ns,         type: u64, unit: ns}
+      # --- driver input echo (so one frame fully describes the step) ------
+      - {name: steering_angle_command,    type: f64, unit: rad}
+      - {name: accelerator_pedal_command, type: f64, unit: "1"}
+      - {name: brake_pedal_command,       type: f64, unit: "1"}
+      # --- VehicleFMI outputs --------------------------------------------
+      - {name: vehicle_speed,        type: f64, unit: m/s,   fmi: vehicleSpeed}
+      - {name: acc_x,                type: f64, unit: m/s2,  fmi: accX}
+      - {name: acc_y,                type: f64, unit: m/s2,  fmi: accY}
+      - {name: handwheel_angle,      type: f64, unit: rad,   fmi: handwheelAngle}
+      - {name: steer_excess,         type: f64, unit: rad,   fmi: steerExcess}
+      - {name: handwheel_torque,     type: f64, unit: N.m,   fmi: handwheelTorque, doc: "Reaction torque; negate for torque applied to the driver"}
+      - {name: fz_fl,                type: f64, unit: N,     fmi: Fz_FL}
+      - {name: fz_fr,                type: f64, unit: N,     fmi: Fz_FR}
+      - {name: fz_rl,                type: f64, unit: N,     fmi: Fz_RL}
+      - {name: fz_rr,                type: f64, unit: N,     fmi: Fz_RR}
+      - {name: left_steer_angle,     type: f64, unit: rad,   fmi: leftSteerAngle}
+      - {name: right_steer_angle,    type: f64, unit: rad,   fmi: rightSteerAngle}
+      - {name: roll,                 type: f64, unit: rad,   fmi: roll}
+      - {name: sideslip,             type: f64, unit: rad,   fmi: sideslip}
+      - {name: vel_x,                type: f64, unit: m/s,   fmi: velX}
+      - {name: vel_y,                type: f64, unit: m/s,   fmi: velY}
+      - {name: yaw_vel,              type: f64, unit: rad/s, fmi: yawVel}
+      # --- kernel-derived pose -------------------------------------------
+      # VehicleFMI exposes body-frame velocities but no global pose, and adding
+      # one would mean editing BobLib. The kernel integrates pose from velX,
+      # velY and yawVel instead, which keeps BobLib untouched.
+      - {name: pos_x,                type: f64, unit: m}
+      - {name: pos_y,                type: f64, unit: m}
+      - {name: yaw,                  type: f64, unit: rad}
+      # --- feedback actually delivered -------------------------------------
+      - {name: ffb_torque_nm,        type: f64, unit: N.m, doc: Torque after the full conditioning chain}
+      # --- loop health (a first-class signal, not diagnostics -- 1.8) ------
+      - {name: rtf,                  type: f64, unit: "1", doc: "Realtime factor over the last second; 1.0 == realtime"}
+      - {name: step_time_us,         type: f64, unit: us,  doc: Wall-clock cost of this step}
+      - {name: step_time_p99_us,     type: f64, unit: us}
+      - {name: deadline_misses,      type: u64, unit: "-"}
+      - {name: kernel_id,            type: u64, unit: "-", doc: "Which PlantKernel produced this frame (see kernel_id enum)"}
+      - {name: fault_flags,          type: u64, unit: "-", doc: "See fault_flags enum"}
+
+  ffb_command:
+    doc: >-
+      Conditioned force feedback, written by StepThread and consumed by
+      HidThread. HidThread applies its own watchdog on top of this: a stale or
+      non-finite command decays to zero rather than being held.
+    shm_name: bobdil_ffb
+    fields:
+      - {name: host_time_ns,   type: u64, unit: ns, doc: Stamp used by the HidThread staleness watchdog}
+      - {name: torque_nm,      type: f64, unit: N.m}
+      - {name: spring_coeff,   type: f64, unit: N.m/rad, doc: Optional centering spring for the parked state}
+      - {name: damper_coeff,   type: f64, unit: N.m.s/rad}
+      - {name: flags,          type: u64, unit: "-", doc: See ffb_flags enum}
+
+enums:
+  kernel_id:
+    doc: Which rung of the plant ladder produced a frame.
+    values: {none: 0, reduced14dof: 1, vehicle_rt: 2, vehicle_fmi: 3}
+  fault_flags:
+    doc: Sticky per-session faults. Any non-zero value is surfaced in the UI.
+    values:
+      none: 0
+      plant_nonfinite: 1
+      deadline_missed: 2
+      ffb_clamped: 4
+      telemetry_overflow: 8
+      device_lost: 16
+      plant_step_failed: 32
+      input_stale: 64
+  ffb_flags:
+    doc: State of the feedback path.
+    values: {none: 0, active: 1, ramping_down: 2, disabled: 4, watchdog_tripped: 8}
+
+# Parameters exposed as FMI 2.0 `tunable`, settable mid-session (1.9).
+# Structural changes (hardpoints, topology) are not here -- those recompile.
+tunables:
+  - {id: 0, name: front_arb_rate,   fmi: pVehicle.pFrStabar.barRate, unit: N.m/rad, min: 0.0,  max: 60000.0}
+  - {id: 1, name: rear_arb_rate,    fmi: pVehicle.pRrStabar.barRate, unit: N.m/rad, min: 0.0,  max: 60000.0}
+  - {id: 2, name: brake_bias,       fmi: pVehicle.pVCU.brakeBias,    unit: "1",     min: 0.35, max: 0.85}
+  - {id: 3, name: diff_preload,     fmi: pVehicle.pDriveline.diff_T_preload, unit: N.m, min: 0.0, max: 200.0}
