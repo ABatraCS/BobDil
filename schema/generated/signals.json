@@ -1,0 +1,438 @@
+{
+  "schema_version": 1,
+  "layout_revision": 1,
+  "layout_hash": "0x1694a0f5d2961c8b",
+  "frames": {
+    "driver_input": {
+      "shm_name": "bobdil_input",
+      "size_bytes": 72,
+      "fields": [
+        {
+          "name": "host_time_ns",
+          "type": "u64",
+          "unit": "ns",
+          "offset": 0,
+          "fmi": null
+        },
+        {
+          "name": "sample_index",
+          "type": "u64",
+          "unit": "-",
+          "offset": 8,
+          "fmi": null
+        },
+        {
+          "name": "steering_angle_command",
+          "type": "f64",
+          "unit": "rad",
+          "offset": 16,
+          "fmi": "steeringAngleCommand"
+        },
+        {
+          "name": "accelerator_pedal_command",
+          "type": "f64",
+          "unit": "1",
+          "offset": 24,
+          "fmi": "acceleratorPedalCommand"
+        },
+        {
+          "name": "brake_pedal_command",
+          "type": "f64",
+          "unit": "1",
+          "offset": 32,
+          "fmi": "brakePedalCommand"
+        },
+        {
+          "name": "raw_steer_norm",
+          "type": "f64",
+          "unit": "1",
+          "offset": 40,
+          "fmi": null
+        },
+        {
+          "name": "raw_accel_norm",
+          "type": "f64",
+          "unit": "1",
+          "offset": 48,
+          "fmi": null
+        },
+        {
+          "name": "raw_brake_norm",
+          "type": "f64",
+          "unit": "1",
+          "offset": 56,
+          "fmi": null
+        },
+        {
+          "name": "buttons",
+          "type": "u64",
+          "unit": "-",
+          "offset": 64,
+          "fmi": null
+        }
+      ],
+      "fmi_signals": {
+        "steeringAngleCommand": "steering_angle_command",
+        "acceleratorPedalCommand": "accelerator_pedal_command",
+        "brakePedalCommand": "brake_pedal_command"
+      }
+    },
+    "vehicle_state": {
+      "shm_name": "bobdil_state",
+      "size_bytes": 264,
+      "fields": [
+        {
+          "name": "sim_time",
+          "type": "f64",
+          "unit": "s",
+          "offset": 0,
+          "fmi": null
+        },
+        {
+          "name": "step_index",
+          "type": "u64",
+          "unit": "-",
+          "offset": 8,
+          "fmi": null
+        },
+        {
+          "name": "host_time_ns",
+          "type": "u64",
+          "unit": "ns",
+          "offset": 16,
+          "fmi": null
+        },
+        {
+          "name": "steering_angle_command",
+          "type": "f64",
+          "unit": "rad",
+          "offset": 24,
+          "fmi": null
+        },
+        {
+          "name": "accelerator_pedal_command",
+          "type": "f64",
+          "unit": "1",
+          "offset": 32,
+          "fmi": null
+        },
+        {
+          "name": "brake_pedal_command",
+          "type": "f64",
+          "unit": "1",
+          "offset": 40,
+          "fmi": null
+        },
+        {
+          "name": "vehicle_speed",
+          "type": "f64",
+          "unit": "m/s",
+          "offset": 48,
+          "fmi": "vehicleSpeed"
+        },
+        {
+          "name": "acc_x",
+          "type": "f64",
+          "unit": "m/s2",
+          "offset": 56,
+          "fmi": "accX"
+        },
+        {
+          "name": "acc_y",
+          "type": "f64",
+          "unit": "m/s2",
+          "offset": 64,
+          "fmi": "accY"
+        },
+        {
+          "name": "handwheel_angle",
+          "type": "f64",
+          "unit": "rad",
+          "offset": 72,
+          "fmi": "handwheelAngle"
+        },
+        {
+          "name": "steer_excess",
+          "type": "f64",
+          "unit": "rad",
+          "offset": 80,
+          "fmi": "steerExcess"
+        },
+        {
+          "name": "handwheel_torque",
+          "type": "f64",
+          "unit": "N.m",
+          "offset": 88,
+          "fmi": "handwheelTorque"
+        },
+        {
+          "name": "fz_fl",
+          "type": "f64",
+          "unit": "N",
+          "offset": 96,
+          "fmi": "Fz_FL"
+        },
+        {
+          "name": "fz_fr",
+          "type": "f64",
+          "unit": "N",
+          "offset": 104,
+          "fmi": "Fz_FR"
+        },
+        {
+          "name": "fz_rl",
+          "type": "f64",
+          "unit": "N",
+          "offset": 112,
+          "fmi": "Fz_RL"
+        },
+        {
+          "name": "fz_rr",
+          "type": "f64",
+          "unit": "N",
+          "offset": 120,
+          "fmi": "Fz_RR"
+        },
+        {
+          "name": "left_steer_angle",
+          "type": "f64",
+          "unit": "rad",
+          "offset": 128,
+          "fmi": "leftSteerAngle"
+        },
+        {
+          "name": "right_steer_angle",
+          "type": "f64",
+          "unit": "rad",
+          "offset": 136,
+          "fmi": "rightSteerAngle"
+        },
+        {
+          "name": "roll",
+          "type": "f64",
+          "unit": "rad",
+          "offset": 144,
+          "fmi": "roll"
+        },
+        {
+          "name": "sideslip",
+          "type": "f64",
+          "unit": "rad",
+          "offset": 152,
+          "fmi": "sideslip"
+        },
+        {
+          "name": "vel_x",
+          "type": "f64",
+          "unit": "m/s",
+          "offset": 160,
+          "fmi": "velX"
+        },
+        {
+          "name": "vel_y",
+          "type": "f64",
+          "unit": "m/s",
+          "offset": 168,
+          "fmi": "velY"
+        },
+        {
+          "name": "yaw_vel",
+          "type": "f64",
+          "unit": "rad/s",
+          "offset": 176,
+          "fmi": "yawVel"
+        },
+        {
+          "name": "pos_x",
+          "type": "f64",
+          "unit": "m",
+          "offset": 184,
+          "fmi": null
+        },
+        {
+          "name": "pos_y",
+          "type": "f64",
+          "unit": "m",
+          "offset": 192,
+          "fmi": null
+        },
+        {
+          "name": "yaw",
+          "type": "f64",
+          "unit": "rad",
+          "offset": 200,
+          "fmi": null
+        },
+        {
+          "name": "ffb_torque_nm",
+          "type": "f64",
+          "unit": "N.m",
+          "offset": 208,
+          "fmi": null
+        },
+        {
+          "name": "rtf",
+          "type": "f64",
+          "unit": "1",
+          "offset": 216,
+          "fmi": null
+        },
+        {
+          "name": "step_time_us",
+          "type": "f64",
+          "unit": "us",
+          "offset": 224,
+          "fmi": null
+        },
+        {
+          "name": "step_time_p99_us",
+          "type": "f64",
+          "unit": "us",
+          "offset": 232,
+          "fmi": null
+        },
+        {
+          "name": "deadline_misses",
+          "type": "u64",
+          "unit": "-",
+          "offset": 240,
+          "fmi": null
+        },
+        {
+          "name": "kernel_id",
+          "type": "u64",
+          "unit": "-",
+          "offset": 248,
+          "fmi": null
+        },
+        {
+          "name": "fault_flags",
+          "type": "u64",
+          "unit": "-",
+          "offset": 256,
+          "fmi": null
+        }
+      ],
+      "fmi_signals": {
+        "vehicleSpeed": "vehicle_speed",
+        "accX": "acc_x",
+        "accY": "acc_y",
+        "handwheelAngle": "handwheel_angle",
+        "steerExcess": "steer_excess",
+        "handwheelTorque": "handwheel_torque",
+        "Fz_FL": "fz_fl",
+        "Fz_FR": "fz_fr",
+        "Fz_RL": "fz_rl",
+        "Fz_RR": "fz_rr",
+        "leftSteerAngle": "left_steer_angle",
+        "rightSteerAngle": "right_steer_angle",
+        "roll": "roll",
+        "sideslip": "sideslip",
+        "velX": "vel_x",
+        "velY": "vel_y",
+        "yawVel": "yaw_vel"
+      }
+    },
+    "ffb_command": {
+      "shm_name": "bobdil_ffb",
+      "size_bytes": 40,
+      "fields": [
+        {
+          "name": "host_time_ns",
+          "type": "u64",
+          "unit": "ns",
+          "offset": 0,
+          "fmi": null
+        },
+        {
+          "name": "torque_nm",
+          "type": "f64",
+          "unit": "N.m",
+          "offset": 8,
+          "fmi": null
+        },
+        {
+          "name": "spring_coeff",
+          "type": "f64",
+          "unit": "N.m/rad",
+          "offset": 16,
+          "fmi": null
+        },
+        {
+          "name": "damper_coeff",
+          "type": "f64",
+          "unit": "N.m.s/rad",
+          "offset": 24,
+          "fmi": null
+        },
+        {
+          "name": "flags",
+          "type": "u64",
+          "unit": "-",
+          "offset": 32,
+          "fmi": null
+        }
+      ],
+      "fmi_signals": {}
+    }
+  },
+  "enums": {
+    "kernel_id": {
+      "none": 0,
+      "reduced14dof": 1,
+      "vehicle_rt": 2,
+      "vehicle_fmi": 3
+    },
+    "fault_flags": {
+      "none": 0,
+      "plant_nonfinite": 1,
+      "deadline_missed": 2,
+      "ffb_clamped": 4,
+      "telemetry_overflow": 8,
+      "device_lost": 16,
+      "plant_step_failed": 32,
+      "input_stale": 64
+    },
+    "ffb_flags": {
+      "none": 0,
+      "active": 1,
+      "ramping_down": 2,
+      "disabled": 4,
+      "watchdog_tripped": 8
+    }
+  },
+  "tunables": [
+    {
+      "id": 0,
+      "name": "front_arb_rate",
+      "fmi": "pVehicle.pFrStabar.barRate",
+      "unit": "N.m/rad",
+      "min": 0.0,
+      "max": 60000.0
+    },
+    {
+      "id": 1,
+      "name": "rear_arb_rate",
+      "fmi": "pVehicle.pRrStabar.barRate",
+      "unit": "N.m/rad",
+      "min": 0.0,
+      "max": 60000.0
+    },
+    {
+      "id": 2,
+      "name": "brake_bias",
+      "fmi": "pVehicle.pVCU.brakeBias",
+      "unit": "1",
+      "min": 0.35,
+      "max": 0.85
+    },
+    {
+      "id": 3,
+      "name": "diff_preload",
+      "fmi": "pVehicle.pDriveline.diff_T_preload",
+      "unit": "N.m",
+      "min": 0.0,
+      "max": 200.0
+    }
+  ]
+}
