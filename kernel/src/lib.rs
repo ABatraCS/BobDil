@@ -25,6 +25,7 @@ pub mod metrics;
 pub mod plant;
 pub mod pose;
 pub mod sys;
+pub mod telemetry;
 pub mod transport;
 
 /// Semantic version of the kernel binary, recorded in every telemetry file so a
