@@ -1,0 +1,24 @@
+# BobDil Python dependencies, pinned.
+#
+# The session layer and the codegen emitters are the only Python in this repo;
+# the kernel is Rust with no crates at all. Versions are pinned for the same
+# reason ruff's rule set is: an unpinned tool that widens its defaults turns a
+# green gate red with no change here. Bump deliberately.
+#
+#   make venv     creates .venv and installs this file
+#   make doctor   reports what is actually installed
+
+# --- codegen ---------------------------------------------------------------
+PyYAML==6.0.3            # schema/bobdil_signals.yaml is the single source of truth
+
+# --- session layer ---------------------------------------------------------
+numpy==2.5.2             # kinematics tables, correlation against BobSim's dyn_py
+scipy==1.18.1            # eigenvalue sweep for the largest stable explicit step
+
+# --- control plane ---------------------------------------------------------
+protobuf==7.36.1         # off the hot path: session <-> kernel control messages
+grpcio-tools==1.83.1     # protoc, for compiling schema/generated/*.proto
+
+# --- gates -----------------------------------------------------------------
+pytest==9.1.1
+ruff==0.16.6

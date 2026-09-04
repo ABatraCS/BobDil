@@ -1,0 +1,41 @@
+# Ruff configuration for BobDil's Python: the codegen emitters and the session
+# layer. The kernel is Rust and is linted by clippy through `make lint-kernel`.
+#
+# The rule set is selected explicitly, for the same reason BobLib pins its own:
+# ruff's default selection widens between releases, so relying on the defaults
+# turns a green gate red with no change to this repository. Widen this list
+# deliberately, alongside a version bump in requirements-dev.txt.
+#
+# The list matches BobLib's so that a contributor moving between the two repos
+# does not have to hold two different rule sets in their head.
+
+target-version = "py311"
+line-length = 100
+
+[lint]
+select = [
+  "E4",  # pycodestyle: imports
+  "E7",  # pycodestyle: statements
+  "E9",  # pycodestyle: runtime errors
+  "F",   # pyflakes
+  "I",   # import sorting
+  "B",   # bugbear
+  "SIM", # flake8-simplify
+  "PIE", # flake8-pie
+  "UP",  # pyupgrade
+]
+
+# Generated files are linted, not excluded. They are checked into the repository
+# and read by people, and holding them to the same rules is what catches a wart
+# in an emitter rather than in one hand-written file -- which is how the
+# redundant quotes in `frames.py`'s annotations were found.
+
+[lint.isort]
+known-first-party = ["bobdil", "bobdil_codegen", "rt_bench"]
+
+[format]
+# Generated files are formatted by their emitter, not by ruff -- the same split
+# the kernel uses for `rustfmt`. `codegen-check` already guards these bytes
+# exactly, so a second gate with a different opinion about them would only give
+# the two something to disagree about. Linting still covers them (above).
+exclude = ["**/generated/**"]
