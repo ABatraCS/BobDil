@@ -26,6 +26,9 @@ sdl3 = []
 name = "bobdil_kernel"
 path = "src/lib.rs"
 
+[[bin]]
+name = "bobdil-kernel"
+path = "src/main.rs"
 
 [profile.release]
 opt-level = 3
