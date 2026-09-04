@@ -22,6 +22,7 @@
 pub mod generated;
 pub mod metrics;
 pub mod sys;
+pub mod transport;
 
 /// Semantic version of the kernel binary, recorded in every telemetry file so a
 /// recording can always be traced back to the code that produced it.
