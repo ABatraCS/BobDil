@@ -10,6 +10,7 @@
 pub mod fmi2;
 pub mod fmu_me;
 pub mod integrator;
+pub mod ladder;
 pub mod reduced;
 
 use crate::generated::frames::{DriverInput, VehicleState};
