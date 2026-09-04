@@ -21,6 +21,8 @@
 
 pub mod generated;
 pub mod metrics;
+pub mod plant;
+pub mod pose;
 pub mod sys;
 pub mod transport;
 
