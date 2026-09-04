@@ -1,0 +1,28 @@
+; BobDil driver view.
+;
+; This project is a *read-only client* of the kernel. It attaches to the state
+; segment the kernel publishes and draws it. It has no write path to physics --
+; not by convention, but because the segment is mapped read-only and the view
+; never opens it for writing. If this process hangs, crashes, or spends 40 ms
+; compiling a shader, the plant does not notice.
+
+config_version=5
+
+[application]
+
+config/name="BobDil Driver View"
+config/description="Driver's point of view over the BobDil kernel's published vehicle state."
+run/main_scene="res://scenes/driver_view.tscn"
+config/features=PackedStringArray("4.4", "Forward Plus")
+
+[display]
+
+window/size/viewport_width=1600
+window/size/viewport_height=900
+window/vsync/vsync_mode=0
+
+[rendering]
+
+renderer/rendering_method="forward_plus"
+anti_aliasing/quality/msaa_3d=2
+environment/defaults/default_clear_color=Color(0.42, 0.53, 0.60, 1)

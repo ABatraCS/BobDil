@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://bobdildriverview"]
+
+[ext_resource type="Script" path="res://scripts/driver_view.gd" id="1_driverview"]
+
+[node name="DriverView" type="Node3D"]
+script = ExtResource("1_driverview")
