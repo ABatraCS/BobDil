@@ -20,6 +20,7 @@
 //! layer testable without a wheel plugged in.
 
 pub mod generated;
+pub mod io;
 pub mod metrics;
 pub mod plant;
 pub mod pose;
