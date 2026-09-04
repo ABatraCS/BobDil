@@ -6,14 +6,26 @@ of them can stall a step. It can crash without stopping a drive.
 """
 
 
-from . import doctor, fmu_build, kernel, manifest, model_description, paths, toolchain
+from . import (
+    ab,
+    doctor,
+    fmu_build,
+    kernel,
+    manifest,
+    model_description,
+    paths,
+    recording,
+    toolchain,
+)
 
 __all__ = [
+    "ab",
     "doctor",
     "fmu_build",
     "kernel",
     "manifest",
     "model_description",
     "paths",
+    "recording",
     "toolchain",
 ]
