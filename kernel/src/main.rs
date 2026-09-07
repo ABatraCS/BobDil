@@ -47,6 +47,9 @@ OPTIONS:
     --duration <SECONDS> Stop after this long. Omit to run until interrupted.
     --speed <M/S>        Initial vehicle speed (default 0, a standing start).
     --telemetry <PATH>   Record every step to this file.
+    --trace <PATH>       Record round-trip spans to this file. Off by default;
+                         costs ~125 ns a step when on. Read it with
+                         `python -m roundtrip <PATH>`.
     --torque-limit <NM>  Absolute feedback clamp (default 8). Set this below
                          your wheel's capability BEFORE anyone drives.
     --ffb-gain <G>       Feedback gain, 0 to silence the wheel (default 1).
