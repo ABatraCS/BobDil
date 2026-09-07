@@ -90,13 +90,16 @@ RT_BENCH_ARGS   ?=
 AB_A ?=
 AB_B ?= -b front_arb_rate=45000
 RECORDING   ?= build/recordings/validate.bdt
+TRACE       ?= build/traces/roundtrip.bdtrace
+TRACE_JSON  ?= build/traces/roundtrip.json
+TRACE_SECS  ?= 3
 DRIVE_ARGS  ?=
 
 .DEFAULT_GOAL := help
 
 .PHONY: help venv codegen codegen-check \
         test test-python test-kernel test-kernel-sdl3 lint lint-python lint-rust fmt fmt-check \
-        validate doctor selftest bench record replay-check view-check \
+        validate doctor selftest bench record replay-check view-check trace \
         build build-headless fixture-fmu rt-bench ab-paired drive drive-fixture view release ci \
         omc-image kernel-image require-boblib vehicle-fmu vehicle-fmu-inner rt-bench-vehicle \
         test-container shell-omc shell-kernel \
@@ -122,6 +125,7 @@ help:
 	  '  make bench           step time vs the 1 ms deadline (BENCH_STEPS=$(BENCH_STEPS))' \
 	  '  make record          drive the scripted input and record it' \
 	  '  make replay-check    assert a recording replays bit-identically' \
+	  '  make trace           where the time goes, sample -> torque (TRACE_SECS=$(TRACE_SECS))' \
 	  '  make view-check      assert the Godot view reads live physics' \
 	  '' \
 	  'production' \
@@ -243,6 +247,15 @@ bench: build
 record: build
 	@mkdir -p $(dir $(RECORDING))
 	$(KERNEL) run --duration 3 --telemetry $(RECORDING)
+
+# architecture.md 5.6 states a round-trip budget that nothing else here
+# measures. `bench` says what a step costs; this says what the driver waits for,
+# which is a different and larger number. Validation group: it measures this
+# box, and the numbers do not travel.
+trace: build
+	@mkdir -p $(dir $(TRACE))
+	$(KERNEL) run --duration $(TRACE_SECS) --trace $(TRACE)
+	@PYTHONPATH=tools:session:codegen $(PYTHON) -m roundtrip $(TRACE) -o $(TRACE_JSON)
 
 # Determinism is what makes paired A/B worth anything: if the same inputs do not
 # reproduce the same states, a difference between two setups cannot be
