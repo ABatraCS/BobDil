@@ -78,8 +78,9 @@ message TraceStep {
   uint64 t_after_read = 5;
   uint64 t_after_shape = 6;
   uint64 t_after_plant = 7;
-  uint64 t_after_ffb = 8;
-  uint64 t_after_publish = 9;
+  uint64 t_command_stamp = 8;
+  uint64 t_after_ffb = 9;
+  uint64 t_after_publish = 10;
 }
 
 // One record per HidThread iteration, pushed when --trace is on. command_host_time_ns is the StepThread publish stamp the command carried, which is what joins a delivered torque back to the step that produced it.

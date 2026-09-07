@@ -23,6 +23,7 @@ use std::sync::Arc;
 
 use crate::config::{KernelConfig, OverrunPolicy};
 use crate::generated::frames::{fault_flags, DriverInput, FfbCommand, VehicleState, LAYOUT_HASH};
+use crate::generated::frames::{TraceDevice, TraceStep};
 use crate::io::device::{DeviceCaps, HapticSink, InputSource};
 use crate::io::ffb::{FfbChain, FfbConfig};
 use crate::io::hid::{HidConfig, HidLoop, HidStats};
@@ -34,8 +35,24 @@ use crate::pose::Pose;
 use crate::sys::clock::{monotonic_ns, sleep_until_precise};
 use crate::sys::sched::{harden_current_thread, RtStatus};
 use crate::sys::{shm, signals};
-use crate::telemetry::{self, SessionMeta, TelemetryStats};
+use crate::telemetry::trace::TraceMeta;
+use crate::telemetry::{self, SessionMeta, TelemetryStats, TraceStats};
 use crate::transport::{ring_channel, SeqlockReader, SeqlockWriter};
+
+/// One span stamp, taken only when tracing is on.
+///
+/// This is the whole cost of the trace on the critical path: with `--trace`
+/// absent, `enabled` is false for the entire session, so the branch predicts
+/// perfectly and no clock is read at all. With it on, a vDSO CLOCK_MONOTONIC
+/// read is ~20-25 ns and there are five of these, against a 1 ms budget.
+#[inline(always)]
+fn stamp(enabled: bool) -> u64 {
+    if enabled {
+        monotonic_ns()
+    } else {
+        0
+    }
+}
 
 /// What a session did, reported honestly whether or not it went well.
 pub struct SessionReport {
@@ -54,6 +71,9 @@ pub struct SessionReport {
     pub watchdog_trips: u64,
     pub telemetry_frames: u64,
     pub telemetry_dropped: u64,
+    /// Spans recorded. Zero unless `--trace` was given.
+    pub trace_steps: u64,
+    pub trace_dropped: u64,
     pub stale_commands: u64,
     pub ladder_report: String,
     pub plant_error: Option<String>,
@@ -173,8 +193,28 @@ where
         spin_ns: config.spin_ns / 2,
         ..Default::default()
     };
+    // The trace rings are created here, before the device thread, because the
+    // device thread owns one end of the second one. The drain thread that
+    // consumes them is spawned further down, once the plant has been chosen and
+    // there is a kernel id worth recording.
+    let (trace_step_tx, trace_step_rx, trace_device_tx, trace_device_rx) = match &config.trace_path
+    {
+        Some(_) => {
+            let (step_tx, step_rx) = ring_channel::<TraceStep>(config.trace_capacity);
+            let (device_tx, device_rx) = ring_channel::<TraceDevice>(config.trace_capacity);
+            (
+                Some(step_tx),
+                Some(step_rx),
+                Some(device_tx),
+                Some(device_rx),
+            )
+        }
+        None => (None, None, None, None),
+    };
+
     let hid = HidLoop::new(device, hid_config, Arc::clone(&hid_stats))
-        .map_err(|e| format!("device thread: {e}"))?;
+        .map_err(|e| format!("device thread: {e}"))?
+        .with_trace(trace_device_tx);
     let device_caps = hid.caps();
 
     let hid_stop = Arc::clone(&stop);
@@ -243,6 +283,33 @@ where
         None => (None, None),
     };
 
+    // --- the trace ----------------------------------------------------------
+    // Two rings because `spsc_ring` is single-producer and the device thread is
+    // the second producer. Both are allocated here, before the thread hardens,
+    // for the same reason everything else on the step path is.
+    let trace_stats = Arc::new(TraceStats::default());
+    let trace_thread = match (&config.trace_path, trace_step_rx, trace_device_rx) {
+        (Some(path), Some(step_rx), Some(device_rx)) => {
+            let meta = TraceMeta {
+                step_dt: config.step_dt,
+                kernel_id: caps.id,
+                build_hash: 0,
+            };
+            let stop_trace = Arc::clone(&stop);
+            let stats = Arc::clone(&trace_stats);
+            let path = path.clone();
+            Some(
+                std::thread::Builder::new()
+                    .name("bobdil-trace".to_string())
+                    .spawn(move || {
+                        telemetry::run_trace(step_rx, device_rx, path, meta, stop_trace, stats)
+                    })
+                    .map_err(|e| format!("cannot spawn trace thread: {e}"))?,
+            )
+        }
+        _ => None,
+    };
+
     // --- the loop -----------------------------------------------------------
     // Everything the step path touches is allocated here, before the thread is
     // hardened, so that mlock(current) covers all of it and the loop itself
@@ -272,6 +339,7 @@ where
     let mut reanchors = 0u64;
     let mut faults = 0u64;
     let mut plant_error = None;
+    let tracing = trace_step_tx.is_some();
 
     let wall_start = monotonic_ns();
     rtf.start(wall_start, 0.0);
@@ -301,11 +369,13 @@ where
                 DriverInput::default()
             }
         };
+        let t_after_read = stamp(tracing);
 
         // 2. Shape the steering position so the plant sees an angle, a rate and
         //    an acceleration that are actually derivatives of one another.
         let shaped = shaper.update(input.steering_angle_command, dt);
         input.steering_angle_command = shaped.angle;
+        let t_after_shape = stamp(tracing);
 
         // 3. Advance the plant by exactly dt.
         let mut state = match plant.step(&input, dt) {
@@ -322,6 +392,7 @@ where
                 break;
             }
         };
+        let t_after_plant = stamp(tracing);
         sim_time += dt;
         step_index += 1;
 
@@ -349,6 +420,7 @@ where
         if outcome.nonfinite {
             faults |= fault_flags::PLANT_NONFINITE;
         }
+        let t_after_ffb = stamp(tracing);
 
         // 6. Fill in the health fields and publish.
         state.host_time_ns = now;
@@ -363,6 +435,25 @@ where
 
         state_writer.publish(&state);
         ffb_writer.publish(&outcome.command);
+
+        // The trace, if it is on. Pushed after everything the driver can feel
+        // has already been published, so a full ring can never delay a torque.
+        // `now` is the stamp the command itself carries, which is what the
+        // device thread's record joins back to.
+        if let Some(tx) = &trace_step_tx {
+            let _ = tx.push(TraceStep {
+                step_index,
+                input_host_time_ns: input.host_time_ns,
+                input_sample_index: input.sample_index,
+                t_step_start: step_start,
+                t_after_read,
+                t_after_shape,
+                t_after_plant,
+                t_command_stamp: now,
+                t_after_ffb,
+                t_after_publish: stamp(tracing),
+            });
+        }
 
         // 7. Telemetry. A rejected push is a recorded fault, never a silent drop.
         if let Some(tx) = &telemetry_tx {
@@ -409,6 +500,12 @@ where
     if let Some(handle) = telemetry_thread {
         let _ = handle.join();
     }
+    // Drop the producers before joining, so the drain sees empty rings and a
+    // set stop flag rather than waiting out its poll interval on every exit.
+    drop(trace_step_tx);
+    if let Some(handle) = trace_thread {
+        let _ = handle.join();
+    }
 
     let wall_time_s = (monotonic_ns() - wall_start) as f64 * 1e-9;
     let telemetry_dropped = telemetry_stats.dropped.load(Ordering::Relaxed);
@@ -429,6 +526,8 @@ where
         ffb_clamps: chain.clamp_events(),
         watchdog_trips: chain.watchdog().trips(),
         telemetry_frames: telemetry_stats.frames_written.load(Ordering::Relaxed),
+        trace_steps: trace_stats.steps_written.load(Ordering::Relaxed),
+        trace_dropped: trace_stats.dropped.load(Ordering::Relaxed),
         telemetry_dropped,
         stale_commands: hid_stats.stale_commands.load(Ordering::Relaxed),
         ladder_report,

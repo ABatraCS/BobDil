@@ -134,6 +134,7 @@ frames:
       - {name: t_after_read,        type: u64, unit: ns,   doc: Bounds the seqlock read}
       - {name: t_after_shape,       type: u64, unit: ns,   doc: Bounds input_shaper}
       - {name: t_after_plant,       type: u64, unit: ns,   doc: Bounds plant.step -- the span Phase 0 cares about}
+      - {name: t_command_stamp,     type: u64, unit: ns,   doc: "The exact stamp written into the FfbCommand; ends the pose span and is what trace_device joins on"}
       - {name: t_after_ffb,         type: u64, unit: ns,   doc: Bounds the conditioning chain}
       - {name: t_after_publish,     type: u64, unit: ns,   doc: Bounds both seqlock publishes}
 
@@ -143,7 +144,7 @@ frames:
       command_host_time_ns is the StepThread publish stamp the command carried,
       which is what joins a delivered torque back to the step that produced it.
     fields:
-      - {name: command_host_time_ns, type: u64, unit: ns,  doc: Join key -- equals trace_step.t_after_publish for the producing step}
+      - {name: command_host_time_ns, type: u64, unit: ns,  doc: Join key -- equals trace_step.t_command_stamp for the producing step}
       - {name: t_pickup,             type: u64, unit: ns,  doc: When HidThread read the command}
       - {name: t_after_apply,        type: u64, unit: ns,  doc: When the device had been handed the torque}
       - {name: sample_index,         type: u64, unit: "-", doc: The HID sample this iteration took}

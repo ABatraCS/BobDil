@@ -45,6 +45,13 @@ pub struct KernelConfig {
     /// momentarily blocked disk cannot lose samples.
     pub telemetry_capacity: usize,
     pub telemetry_path: Option<PathBuf>,
+    /// Where to write the round-trip span trace, or `None` for no tracing.
+    ///
+    /// Off by default because the stamps are taken inside the step. `None`
+    /// costs one predictable branch per phase and no clock reads at all; see
+    /// `loop_runner`.
+    pub trace_path: Option<PathBuf>,
+    pub trace_capacity: usize,
     /// Absolute force-feedback torque clamp [N.m]. Must be set below the
     /// device's capability before anyone drives.
     pub ffb_torque_limit: f64,
@@ -68,6 +75,8 @@ impl Default for KernelConfig {
             watchdog_miss_limit: 5,
             telemetry_capacity: 65_536,
             telemetry_path: None,
+            trace_path: None,
+            trace_capacity: 65_536,
             // 8 N.m is a firm but survivable default. A direct-drive wheel can
             // deliver 20+ N.m, which is enough to injure a wrist, so the limit
             // is opt-in-raised rather than opt-out-lowered.

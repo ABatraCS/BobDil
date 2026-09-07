@@ -4,7 +4,7 @@
 
 /// Fingerprint of the wire layout. Written into every shared-memory segment
 /// header so a stale reader refuses to attach rather than misreading bytes.
-pub const LAYOUT_HASH: u64 = 0xc39036ce6c8ab845;
+pub const LAYOUT_HASH: u64 = 0xfe3fdafe1245fcba;
 pub const LAYOUT_REVISION: u64 = 1;
 pub const SCHEMA_VERSION: u64 = 1;
 
@@ -399,6 +399,8 @@ pub struct TraceStep {
     pub t_after_shape: u64,
     /// Bounds plant.step -- the span Phase 0 cares about [ns]
     pub t_after_plant: u64,
+    /// The exact stamp written into the FfbCommand; ends the pose span and is what trace_device joins on [ns]
+    pub t_command_stamp: u64,
     /// Bounds the conditioning chain [ns]
     pub t_after_ffb: u64,
     /// Bounds both seqlock publishes [ns]
@@ -406,9 +408,9 @@ pub struct TraceStep {
 }
 
 impl TraceStep {
-    pub const SIZE: usize = 72;
-    pub const FIELD_COUNT: usize = 9;
-    pub const FIELD_NAMES: [&'static str; 9] = [
+    pub const SIZE: usize = 80;
+    pub const FIELD_COUNT: usize = 10;
+    pub const FIELD_NAMES: [&'static str; 10] = [
         "step_index",
         "input_host_time_ns",
         "input_sample_index",
@@ -416,10 +418,22 @@ impl TraceStep {
         "t_after_read",
         "t_after_shape",
         "t_after_plant",
+        "t_command_stamp",
         "t_after_ffb",
         "t_after_publish",
     ];
-    pub const FIELD_UNITS: [&'static str; 9] = ["-", "ns", "-", "ns", "ns", "ns", "ns", "ns", "ns"];
+    pub const FIELD_UNITS: [&'static str; 10] = [
+        "-",
+        "ns",
+        "-",
+        "ns",
+        "ns",
+        "ns",
+        "ns",
+        "ns",
+        "ns",
+        "ns",
+    ];
 
     /// Field by index, widened to f64. Used by telemetry and replay diffing
     /// so neither has to know the field list.
@@ -432,8 +446,9 @@ impl TraceStep {
             4 => self.t_after_read as f64,
             5 => self.t_after_shape as f64,
             6 => self.t_after_plant as f64,
-            7 => self.t_after_ffb as f64,
-            8 => self.t_after_publish as f64,
+            7 => self.t_command_stamp as f64,
+            8 => self.t_after_ffb as f64,
+            9 => self.t_after_publish as f64,
             _ => f64::NAN,
         }
     }
@@ -449,7 +464,7 @@ impl TraceStep {
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct TraceDevice {
-    /// Join key -- equals trace_step.t_after_publish for the producing step [ns]
+    /// Join key -- equals trace_step.t_command_stamp for the producing step [ns]
     pub command_host_time_ns: u64,
     /// When HidThread read the command [ns]
     pub t_pickup: u64,

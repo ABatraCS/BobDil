@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "layout_revision": 1,
-  "layout_hash": "0xc39036ce6c8ab845",
+  "layout_hash": "0xfe3fdafe1245fcba",
   "frames": {
     "driver_input": {
       "shm_name": "bobdil_input",
@@ -377,7 +377,7 @@
     },
     "trace_step": {
       "shm_name": null,
-      "size_bytes": 72,
+      "size_bytes": 80,
       "fields": [
         {
           "name": "step_index",
@@ -429,17 +429,24 @@
           "fmi": null
         },
         {
-          "name": "t_after_ffb",
+          "name": "t_command_stamp",
           "type": "u64",
           "unit": "ns",
           "offset": 56,
           "fmi": null
         },
         {
-          "name": "t_after_publish",
+          "name": "t_after_ffb",
           "type": "u64",
           "unit": "ns",
           "offset": 64,
+          "fmi": null
+        },
+        {
+          "name": "t_after_publish",
+          "type": "u64",
+          "unit": "ns",
+          "offset": 72,
           "fmi": null
         }
       ],

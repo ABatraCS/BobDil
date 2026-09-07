@@ -4,7 +4,7 @@
 
 #include <stdint.h>
 
-#define BOBDIL_LAYOUT_HASH     0xc39036ce6c8ab845ULL
+#define BOBDIL_LAYOUT_HASH     0xfe3fdafe1245fcbaULL
 #define BOBDIL_LAYOUT_REVISION 1
 #define BOBDIL_SCHEMA_VERSION  1
 
@@ -82,14 +82,15 @@ typedef struct {
     uint64_t t_after_read; /* [ns] Bounds the seqlock read */
     uint64_t t_after_shape; /* [ns] Bounds input_shaper */
     uint64_t t_after_plant; /* [ns] Bounds plant.step -- the span Phase 0 cares about */
+    uint64_t t_command_stamp; /* [ns] The exact stamp written into the FfbCommand; ends the pose span and is what trace_device joins on */
     uint64_t t_after_ffb; /* [ns] Bounds the conditioning chain */
     uint64_t t_after_publish; /* [ns] Bounds both seqlock publishes */
 } bobdil_trace_step_t;
-#define BOBDIL_TRACE_STEP_SIZE 72
+#define BOBDIL_TRACE_STEP_SIZE 80
 
 /* One record per HidThread iteration, pushed when --trace is on. command_host_time_ns is the StepThread publish stamp the command carried, which is what joins a delivered torque back to the step that produced it. */
 typedef struct {
-    uint64_t command_host_time_ns; /* [ns] Join key -- equals trace_step.t_after_publish for the producing step */
+    uint64_t command_host_time_ns; /* [ns] Join key -- equals trace_step.t_command_stamp for the producing step */
     uint64_t t_pickup; /* [ns] When HidThread read the command */
     uint64_t t_after_apply; /* [ns] When the device had been handed the torque */
     uint64_t sample_index; /* [-] The HID sample this iteration took */

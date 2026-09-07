@@ -20,6 +20,8 @@ use crate::transport::{SeqlockReader, SeqlockWriter};
 
 use super::device::{Calibration, DeviceCaps, HapticSink, InputSource};
 use super::watchdog::{command_is_fresh, Watchdog, WatchdogConfig};
+use crate::generated::frames::{trace_flags, TraceDevice};
+use crate::transport::spsc_ring::Producer;
 
 #[derive(Debug, Clone)]
 pub struct HidConfig {
@@ -69,6 +71,10 @@ pub struct HidLoop<D> {
     ffb_reader: SeqlockReader<FfbCommand>,
     watchdog: Watchdog,
     stats: Arc<HidStats>,
+    /// The device half of the round-trip trace, when `--trace` is on. `None`
+    /// costs one branch per iteration and one clock read that is already taken
+    /// for the staleness check anyway.
+    trace: Option<Producer<TraceDevice>>,
 }
 
 impl<D: InputSource + HapticSink> HidLoop<D> {
@@ -85,7 +91,16 @@ impl<D: InputSource + HapticSink> HidLoop<D> {
             ffb_reader,
             watchdog,
             stats,
+            trace: None,
         })
+    }
+
+    /// Attach the device half of the round-trip trace. Separate from `new` so
+    /// that nothing in the device path has to know a trace exists in order to
+    /// be constructed or tested.
+    pub fn with_trace(mut self, trace: Option<Producer<TraceDevice>>) -> Self {
+        self.trace = trace;
+        self
     }
 
     pub fn caps(&self) -> DeviceCaps {
@@ -137,8 +152,30 @@ impl<D: InputSource + HapticSink> HidLoop<D> {
             outgoing.damper_coeff *= verdict.scale();
             outgoing.spring_coeff *= verdict.scale();
 
-            if self.device.apply(&outgoing).is_err() {
+            let applied = self.device.apply(&outgoing);
+            if applied.is_err() {
                 self.stats.apply_errors.fetch_add(1, Ordering::Relaxed);
+            }
+
+            // The device leg of the trace. `now` is already taken above for the
+            // staleness check, so the only new clock read here is the one after
+            // the device has been handed the torque.
+            if let Some(trace) = &self.trace {
+                let mut flags = match (command, fresh) {
+                    (Some(_), true) => trace_flags::COMMAND_FRESH,
+                    (Some(_), false) => trace_flags::COMMAND_STALE,
+                    (None, _) => trace_flags::COMMAND_MISSING,
+                };
+                if applied.is_err() {
+                    flags |= trace_flags::APPLY_FAILED;
+                }
+                let _ = trace.push(TraceDevice {
+                    command_host_time_ns: command.map(|c| c.host_time_ns).unwrap_or(0),
+                    t_pickup: now,
+                    t_after_apply: monotonic_ns(),
+                    sample_index,
+                    flags,
+                });
             }
 
             deadline += self.config.period_ns;

@@ -189,3 +189,148 @@ mod tests {
         );
     }
 }
+
+/// A trace this build refuses to read, and why.
+#[derive(Debug)]
+pub enum TraceError {
+    Io(std::io::Error),
+    BadMagic { found: u64 },
+    LayoutMismatch { expected: u64, found: u64 },
+    Truncated { at: usize },
+    UnknownKind { kind: u64, at: usize },
+}
+
+impl std::fmt::Display for TraceError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Io(e) => write!(f, "{e}"),
+            Self::BadMagic { found } => {
+                write!(f, "not a BobDil trace (magic {found:#018x})")
+            }
+            Self::LayoutMismatch { expected, found } => write!(
+                f,
+                "schema mismatch: trace was written by layout {found:#018x}, this build \
+                 expects {expected:#018x}. Rebuild both sides from the same schema."
+            ),
+            Self::Truncated { at } => write!(f, "trace ends mid-record at byte {at}"),
+            Self::UnknownKind { kind, at } => {
+                write!(f, "unknown record kind {kind} at byte {at}")
+            }
+        }
+    }
+}
+
+impl std::error::Error for TraceError {}
+
+impl From<std::io::Error> for TraceError {
+    fn from(value: std::io::Error) -> Self {
+        Self::Io(value)
+    }
+}
+
+/// Read a trace back. Used by the tests and by anything offline that would
+/// rather not re-derive the format.
+pub struct TraceReader {
+    pub meta: TraceMeta,
+    pub steps: Vec<TraceStep>,
+    pub devices: Vec<TraceDevice>,
+}
+
+impl TraceReader {
+    pub fn open(path: &Path) -> Result<Self, TraceError> {
+        let bytes = std::fs::read(path)?;
+        if bytes.len() < HEADER_SIZE {
+            return Err(TraceError::Truncated { at: bytes.len() });
+        }
+        let word = |index: usize| -> u64 {
+            u64::from_le_bytes(bytes[index * 8..index * 8 + 8].try_into().unwrap())
+        };
+        if word(0) != TRACE_MAGIC {
+            return Err(TraceError::BadMagic { found: word(0) });
+        }
+        // The same refusal the shm readers make, for the same reason: a trace
+        // decoded with the wrong field meanings is worse than no trace, because
+        // every number in it still looks plausible.
+        if word(1) != LAYOUT_HASH {
+            return Err(TraceError::LayoutMismatch {
+                expected: LAYOUT_HASH,
+                found: word(1),
+            });
+        }
+        let meta = TraceMeta {
+            step_dt: f64::from_bits(word(5)),
+            kernel_id: word(6),
+            build_hash: word(7),
+        };
+
+        let mut steps = Vec::new();
+        let mut devices = Vec::new();
+        let mut cursor = HEADER_SIZE;
+        while cursor < bytes.len() {
+            if cursor + 8 > bytes.len() {
+                return Err(TraceError::Truncated { at: cursor });
+            }
+            let kind = u64::from_le_bytes(bytes[cursor..cursor + 8].try_into().unwrap());
+            cursor += 8;
+            match kind {
+                KIND_STEP => {
+                    let end = cursor + TraceStep::SIZE;
+                    if end > bytes.len() {
+                        return Err(TraceError::Truncated { at: cursor });
+                    }
+                    steps.push(read_step(&bytes[cursor..end]));
+                    cursor = end;
+                }
+                KIND_DEVICE => {
+                    let end = cursor + TraceDevice::SIZE;
+                    if end > bytes.len() {
+                        return Err(TraceError::Truncated { at: cursor });
+                    }
+                    devices.push(read_device(&bytes[cursor..end]));
+                    cursor = end;
+                }
+                kind => {
+                    return Err(TraceError::UnknownKind {
+                        kind,
+                        at: cursor - 8,
+                    })
+                }
+            }
+        }
+
+        Ok(Self {
+            meta,
+            steps,
+            devices,
+        })
+    }
+}
+
+fn word_at(bytes: &[u8], index: usize) -> u64 {
+    u64::from_le_bytes(bytes[index * 8..index * 8 + 8].try_into().unwrap())
+}
+
+fn read_step(bytes: &[u8]) -> TraceStep {
+    TraceStep {
+        step_index: word_at(bytes, 0),
+        input_host_time_ns: word_at(bytes, 1),
+        input_sample_index: word_at(bytes, 2),
+        t_step_start: word_at(bytes, 3),
+        t_after_read: word_at(bytes, 4),
+        t_after_shape: word_at(bytes, 5),
+        t_after_plant: word_at(bytes, 6),
+        t_command_stamp: word_at(bytes, 7),
+        t_after_ffb: word_at(bytes, 8),
+        t_after_publish: word_at(bytes, 9),
+    }
+}
+
+fn read_device(bytes: &[u8]) -> TraceDevice {
+    TraceDevice {
+        command_host_time_ns: word_at(bytes, 0),
+        t_pickup: word_at(bytes, 1),
+        t_after_apply: word_at(bytes, 2),
+        sample_index: word_at(bytes, 3),
+        flags: word_at(bytes, 4),
+    }
+}

@@ -9,7 +9,7 @@ import struct
 from dataclasses import dataclass
 from typing import ClassVar
 
-LAYOUT_HASH = 0xc39036ce6c8ab845
+LAYOUT_HASH = 0xfe3fdafe1245fcba
 LAYOUT_REVISION = 1
 SCHEMA_VERSION = 1
 
@@ -137,20 +137,21 @@ class TraceStep:
     t_after_read: int = 0
     t_after_shape: int = 0
     t_after_plant: int = 0
+    t_command_stamp: int = 0
     t_after_ffb: int = 0
     t_after_publish: int = 0
 
-    STRUCT: ClassVar[str] = "<QQQQQQQQQ"
-    SIZE: ClassVar[int] = 72
-    FIELDS: ClassVar[tuple[str, ...]] = ('step_index', 'input_host_time_ns', 'input_sample_index', 't_step_start', 't_after_read', 't_after_shape', 't_after_plant', 't_after_ffb', 't_after_publish')
-    UNITS: ClassVar[tuple[str, ...]] = ('-', 'ns', '-', 'ns', 'ns', 'ns', 'ns', 'ns', 'ns')
+    STRUCT: ClassVar[str] = "<QQQQQQQQQQ"
+    SIZE: ClassVar[int] = 80
+    FIELDS: ClassVar[tuple[str, ...]] = ('step_index', 'input_host_time_ns', 'input_sample_index', 't_step_start', 't_after_read', 't_after_shape', 't_after_plant', 't_command_stamp', 't_after_ffb', 't_after_publish')
+    UNITS: ClassVar[tuple[str, ...]] = ('-', 'ns', '-', 'ns', 'ns', 'ns', 'ns', 'ns', 'ns', 'ns')
 
     @classmethod
     def unpack(cls, data: bytes) -> TraceStep:
         return cls(*struct.unpack_from(cls.STRUCT, data, 0))
 
     def pack(self) -> bytes:
-        return struct.pack(self.STRUCT, self.step_index, self.input_host_time_ns, self.input_sample_index, self.t_step_start, self.t_after_read, self.t_after_shape, self.t_after_plant, self.t_after_ffb, self.t_after_publish)
+        return struct.pack(self.STRUCT, self.step_index, self.input_host_time_ns, self.input_sample_index, self.t_step_start, self.t_after_read, self.t_after_shape, self.t_after_plant, self.t_command_stamp, self.t_after_ffb, self.t_after_publish)
 
     def as_dict(self) -> dict[str, float | int]:
         return {name: getattr(self, name) for name in self.FIELDS}

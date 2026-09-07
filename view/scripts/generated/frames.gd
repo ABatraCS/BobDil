@@ -3,7 +3,7 @@
 class_name BobDilFrames
 extends RefCounted
 
-const LAYOUT_HASH: int = -4354920579455076283
+const LAYOUT_HASH: int = -126141479779959622
 const LAYOUT_REVISION: int = 1
 const SCHEMA_VERSION: int = 1
 
@@ -76,7 +76,7 @@ const FFB_COMMAND_OFFSETS: Dictionary = {
 const FFB_COMMAND_FLOAT_FIELDS: Array = ["torque_nm", "spring_coeff", "damper_coeff"]
 
 # One record per step, pushed by StepThread when --trace is on. The stamps bound the five phases of a step; the input fields carry which sample it consumed, so a re-used (stale) sample is visible as such rather than showing up as a suspiciously fast step.
-const TRACE_STEP_SIZE: int = 72
+const TRACE_STEP_SIZE: int = 80
 const TRACE_STEP_OFFSETS: Dictionary = {
 	"step_index": 0,
 	"input_host_time_ns": 8,
@@ -85,8 +85,9 @@ const TRACE_STEP_OFFSETS: Dictionary = {
 	"t_after_read": 32,
 	"t_after_shape": 40,
 	"t_after_plant": 48,
-	"t_after_ffb": 56,
-	"t_after_publish": 64,
+	"t_command_stamp": 56,
+	"t_after_ffb": 64,
+	"t_after_publish": 72,
 }
 const TRACE_STEP_FLOAT_FIELDS: Array = []
 

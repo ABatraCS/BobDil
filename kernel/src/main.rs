@@ -106,6 +106,7 @@ fn parse() -> Result<Args, String> {
                 config.initial_speed = value()?.parse().map_err(|_| "--speed must be a number")?;
             }
             "--telemetry" => config.telemetry_path = Some(PathBuf::from(value()?)),
+            "--trace" => config.trace_path = Some(PathBuf::from(value()?)),
             "--torque-limit" => {
                 config.ffb_torque_limit = value()?
                     .parse()
