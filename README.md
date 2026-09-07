@@ -10,16 +10,22 @@ It exists to answer one kind of question: *would a driver notice this change?*
 Lap-time simulation already tells you whether a setup is faster. It cannot tell
 you whether the car is drivable, and that is the question a rig answers.
 
-> **Status.** Phases 1–5 and 8 of [`docs/architecture.md`](docs/architecture.md)
-> are built and verified. Phase 0's tooling is complete but its headline
-> measurement — the real vehicle's — needs the container. Phase 7 is half done:
+> **Status.** Phases 1, 2, 5 and 8 of
+> [`docs/architecture.md`](docs/architecture.md) are built and verified.
+> Phases 3 and 4 are built but **not verified against their own acceptance
+> criteria**: no torque has ever been delivered to real hardware, and the real
+> vehicle model does not currently step at 1 kHz — it compiles and loads, then
+> fails on the first step, so a driver has never driven it. Phase 0's tooling
+> is complete and its headline measurement is in: it says the real car is
+> *not* steppable as it stands (see below). Only Phase 0's stability sweep is
+> still missing, and it is blocked inside `omc`, not here. Phase 6
+> (`VehicleRT`) and Phase 9 (packaging) are untouched. Phase 7 is half done:
 > live tunables work in the kernel but are blocked on a BobLib change, and
-> `vehicle.yml` → Modelica regeneration is not wired up. The reduced-order plant
-> is *plausible, not correlated* against BobLib, and **no torque has ever been
-> delivered to real hardware**.
+> `vehicle.yml` → Modelica regeneration is not wired up. The reduced-order
+> plant is *plausible, not correlated* against BobLib.
 > [`HANDOFF.md`](HANDOFF.md) is the honest list of what is done, what is left,
-> and what is known to be missing. Read section 7 before quoting any of this as
-> a claim about a car.
+> and what is known to be missing. Read section 7 before quoting any of this
+> as a claim about a car.
 
 ---
 
@@ -94,9 +100,12 @@ physics that looks subtly wrong.
 
 **The kernel is decoupled from everything.** `plant/` does not know a wheel
 exists; `io/` does not know what a tyre is; the view has no write path to
-physics. There are three interchangeable plant kernels behind one trait, and
-which one runs is decided once at session start, on measured data, never
-mid-drive.
+physics. The design's plant ladder has three rungs behind one trait; two of
+them exist today — an FMU loaded through `fmu_me.rs`, and the built-in
+`Reduced14Dof` — and the middle rung (`VehicleRT`) is Phase 6, untouched. Which
+rung runs is decided once at session start, on measured data, never mid-drive.
+That is not decoration: on this machine the real `VehicleFMI` fails its probe
+and the session degrades to `Reduced14Dof` rather than refusing to start.
 
 **Model Exchange, never Co-Simulation.** A CS FMU owns its solver: `fmi2DoStep`
 is unbounded work with no way to impose a deadline, so it cannot be made
@@ -115,8 +124,14 @@ safety-critical code, not as a rendering concern:
 
 - Two independent non-finite barriers: the plant guards its own output, and the
   feedback chain guards again before anything reaches a device.
-- A watchdog ramps torque to zero when the step thread stops meeting deadlines,
-  and the device is left slack on shutdown — including on `SIGKILL`.
+- Two independent watchdogs: one on the step thread ramps torque to zero when
+  deadlines start slipping, and one on the device thread rejects a command that
+  has gone stale, so a step thread that stops publishing entirely still leaves
+  the wheel slack rather than locked solid.
+- The device is zeroed on every exit path the process can run code on — clean
+  shutdown, panic, `Drop`. There is **no signal handler**, so `SIGKILL` (and
+  `SIGTERM`) fall back to whatever the OS does when the device fd closes; that
+  has not been tested on hardware, and nothing here should be relied on for it.
 - `--torque-limit` defaults to 8 N·m and is opt-in-raised, never opt-out-lowered.
 - `make selftest` exercises all of it adversarially. `python -m bobdil drive`
   runs it first and refuses to drive if it fails.
@@ -134,6 +149,7 @@ answers it in three separate parts, because they fail for different reasons:
 ```bash
 make rt-bench            # structure + stability, on BobDil's fixture model
 make rt-bench-vehicle    # the same, on the real car, in the container
+                         # (structure passes; the sweep still exits non-zero)
 make bench               # step timing, on this machine
 ```
 
@@ -149,6 +165,34 @@ make bench               # step timing, on this machine
 
 Gate: p99.9 step time under 500 µs, half the 1 ms budget, leaving room for OS
 jitter.
+
+### What it has actually said
+
+**The fixture** (`DilSmokePlant`, 5 states) passes all three parts: 0 non-linear
+systems, 0 state events, static state selection; the tightest of the four
+operating points still admits a 5.52 ms step, 6× the budget.
+
+**The real car** (`BobLib.Experiments.Standards.VehicleFMI`, 45 states) does
+not, and this is the measurement Phase 0 existed to get:
+
+```
+structure   28 non-linear systems (largest 2), 63 linear, 3 state events,
+            24961 flattened equations, static state selection
+timing      FAILED: step 1 at t=0.001 --
+            fmi2GetEventIndicators returned status 3
+            (non-linear system 28062 failed at time=0.002)
+stability   NOT MEASURED -- omc's `linearize` fails in symbolic initialisation
+            on a MultiBody shape variable, at all four operating points
+```
+
+The structural warning and the runtime failure agree: 28 Newton solves whose
+iteration counts vary with the operating point, and 3 state events located by
+bisection *inside* a step, are exactly the two things that have no upper bound a
+deadline can be planned against. **`VehicleFMI` is therefore not currently
+drivable at 1 kHz**, which is the argument for `VehicleRT` (Phase 6). The
+stability sweep is the one number still owed, and it is blocked in `omc` rather
+than here — see [`HANDOFF.md`](HANDOFF.md) §4 item 0 for what has already been
+ruled out.
 
 ---
 
@@ -166,7 +210,13 @@ jitter.
   timing numbers look.
 - **Live tunables.** Kernel-side and schema-side complete; blocked on a BobLib
   change for the parameters currently compiled in as constants. `python -m
-  bobdil build` names exactly which ones, every time.
+  bobdil build` names exactly which ones, every time — today that is three
+  `variability='fixed'` parameters and one (`brake_bias`) the FMU does not
+  export at all.
+
+Scope, so the above is not read as more than it is: every A/B number produced so
+far describes `Reduced14Dof`'s response, not the real car's, and the blind
+protocol has never been run with a human driver.
 
 ---
 

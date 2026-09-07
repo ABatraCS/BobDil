@@ -5,12 +5,16 @@ Resume point for a fresh session. The design is `docs/architecture.md`
 This file records what is **built and verified**, what is **left**, and the
 things that were learned the hard way.
 
-Roughly 8.8k lines of Rust, 3.5k of Python, plus GDScript and Modelica.
+Roughly 9k lines of Rust, 4.5k of Python, plus GDScript and Modelica.
 
-Against the design's build order: phases 1–5 and 8 are done. **Phase 0's
-tooling is complete but its headline measurement is not** — `rt_bench` answers
-structure and stability and has been run against the fixture, but the number
-that matters is `VehicleFMI`'s, and that needs the container. Phase 6
+Against the design's build order: phases 1, 2, 5 and 8 are done. Phases 3 and 4
+are **built but not signed off against their own acceptance criteria** (design
+§7): phase 3 wants the torque loop measured with a real wheel, and no torque has
+ever reached hardware; phase 4 wants a driver driving the real Modelica model,
+and `VehicleFMI` fails on its first step (§1). **Phase 0's tooling is complete
+and its headline measurement is in** — and the answer is that the real car is
+not steppable at 1 kHz as it stands (§1). Only the stability half of Phase 0 is
+still owed, and it is blocked inside `omc`, not here (§4 item 0). Phase 6
 (`VehicleRT`) and phase 9 (packaging) are untouched, and **phase 7 is only
 half done**: the FMU cache and the manifest are built and the kernel takes live
 tunables, but `vehicle.yml` -> Modelica regeneration is not wired to BobSim's
@@ -32,15 +36,17 @@ in 5 s" -- cannot pass yet, and nothing here should claim it can.
 | Seqlock / SPSC transports | done | torn-read + loss property tests |
 | Telemetry record + replay | done | bit-identical replay verified |
 | Godot 4 view reading `/dev/shm` | done | 120/120 fresh frames, 0 torn |
+| FSAE cone layouts in `view/` | done | `events.gd`: skidpad, acceleration, autocross; drawn as one MultiMesh |
 | SDL3 wheel/FFB backend | compiles, links | **never tested with a real wheel** |
 | Session layer: toolchain, FMU build, manifest | done | built + loaded an FMU |
 | BobDil Modelica fixture plant | done | `DilSmokePlant`, 5 states, 0 events |
 | **`tools/rt_bench/`** — Phase 0 structure + stability | structure done, sweep blocked | `make rt-bench`, 45 Python tests |
-| **Real `VehicleFMI` compiled + loaded** | done | 45 states; `make vehicle-fmu` |
+| **Real `VehicleFMI` compiled + loaded** | done, but **does not step** | 45 states; `make vehicle-fmu`, then fails at step 1 (below) |
 | **`python -m bobdil`** — the session CLI | done | 6 verbs, `make` targets now wrap it |
 | **Paired A/B** | done | `make ab-paired` on the reduced kernel |
 | **Blind A/B** | done | balanced sealed order + exact binomial score |
 | **Containers** | done | `make omc-image` has MSL 4.1.0 + VehicleInterfaces 2.0.2 |
+| The hermetic gate, in the container | done | `make test-container` — same 45 + 88 + 1, green |
 | `.gitignore`, `AGENTS.md`, rewritten `README.md` | done | — |
 
 Measured on this laptop (i7-1360P, unprivileged, `--release`):
@@ -99,15 +105,17 @@ has an upper bound that can be read off the model, and that is what a deadline
 needs. The ladder behaved as designed — the session degraded to `Reduced14Dof`
 rather than refusing to start.
 
-**All four tunables are `variability='fixed'` on the real model.** Previously a
-prediction, now confirmed: live setup changes need `Evaluate=true` removed in
-BobLib. See §4 item 7.
+**None of the four tunables is settable live on the real model.** Previously a
+prediction, now confirmed: `front_arb_rate`, `rear_arb_rate` and `diff_preload`
+export as `variability='fixed'`, and `brake_bias` is not exported at all. Live
+setup changes need `Evaluate=true` removed in BobLib. See §4 item 2.
 
 The stability sweep is **not yet measured on the real car**. Two defects were
 fixed getting this far (§5: operating points carried the fixture's own state
-name; omc's library path). It currently fails in omc's symbolic initialization
-on a MultiBody *animation* variable, which is why `headless = true` is the next
-thing to try — do not report a step bound for this model until the sweep runs.
+name; omc's library path). It still fails in omc's symbolic initialization on a
+MultiBody position variable, at all four operating points; `headless = true` has
+since been tried and only moves the variable it fails on (§4 item 0). Do not
+report a step bound for this model until the sweep runs.
 
 ---
 
@@ -202,7 +210,9 @@ Gate decisions a future agent should not helpfully undo:
    not the model. Next: whether it reproduces without rt_bench's wrapper, and
    under the model's own annotation flags (`dynamicStateSelection`, plus
    `-d=initialization,NLSanalyticJacobian,disableStartCalc`, which
-   `REALTIME_FLAGS` deliberately drops).
+   `REALTIME_FLAGS` deliberately drops). Re-run 2026-09-06 in the container
+   (omc 1.26.3): unchanged, 0 of 4 operating points measured, failing on
+   `$DER.plant.chassis.detailedChassis.spaceFrame.midToFore.shape.r[3]`.
 
 1. **`VehicleRT`** (design §1.5) — the table-driven-suspension BobLib variant.
    The biggest remaining engineering item, and it is a **BobLib PR**, not work
@@ -215,7 +225,9 @@ Gate decisions a future agent should not helpfully undo:
    `tunable` writes, `replay --tunable`). Blocked on BobLib: `python -m bobdil
    build` prints a `not tunable:` line naming every parameter compiled as a
    constant, and each of those record fields must lose `Evaluate=true` and be
-   re-exported with `variability="tunable"` to be settable live.
+   re-exported with `variability="tunable"` to be settable live. `brake_bias`
+   is a separate case: it prints as `absent:` because `pVehicle.pVCU.brakeBias`
+   is not exported by the FMU at all, so it needs adding, not just re-flagging.
 3. **Test with a real wheel.** `io/sdl3.rs` links and the ABI was verified
    against `sizeof`/`offsetof` on the real headers, but no torque has ever been
    delivered to hardware. Run `selftest` first, then `devices`, then `run` with
@@ -224,9 +236,11 @@ Gate decisions a future agent should not helpfully undo:
    `fidelity_suite.py`). This is the gate that should permit it onto the ladder,
    and it cannot run until `VehicleFMI` builds — which it now can.
 5. **Phase 9: packaging and tier-1 installers.** Untouched.
-6. **A real cone-layout event set in `view/`** (design phase 5's second half).
-   The view renders live physics; skidpad, acceleration and autocross layouts
-   are not drawn yet.
+6. **Look at the view on a screen.** `events.gd` now draws skidpad,
+   acceleration and autocross to competition dimensions and `driver_view.gd`
+   renders them, but every check so far has been `make view-check`, which is
+   headless: it proves the view reads live physics, not that the scene looks
+   right to a driver.
 
 ---
 
@@ -396,6 +410,13 @@ with `fmu_build.BOBDIL_ONLY` for the fixture.
 - The default `--torque-limit 8` clamps the reduced plant's steering torque a
   lot during the aggressive probe maneuver (reported as `FFB_CLAMPED`, correctly).
   Real driving inputs are far gentler; revisit with a real wheel.
+- **Nothing zeroes the wheel on a signal.** `io/watchdog.rs`'s rule 4 claims
+  torque is zeroed on "clean shutdown, panic, signal, and the parent process
+  dying", but the only mechanism is `impl Drop for SdlDevice`. There is no
+  signal handler and no `PR_SET_PDEATHSIG`, so a `SIGTERM`ed or `SIGKILL`ed
+  session is relying on the OS to drop the effect when the fd closes — which is
+  probably what happens on Linux, and has never been tested on hardware. Either
+  install the handler or correct the comment; do not leave the two disagreeing.
 - No Windows path has been exercised at all. `shm.rs` and `sched.rs` are POSIX.
-- `make test-container` has not been run; the kernel image builds the same
-  toolchain the host already has, so it has been the lower priority of the two.
+- The Godot view has only ever been exercised headless (`make view-check`), so
+  the cone layouts are code, not something anyone has seen drawn (§4 item 6).
