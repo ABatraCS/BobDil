@@ -9,7 +9,7 @@ import struct
 from dataclasses import dataclass
 from typing import ClassVar
 
-LAYOUT_HASH = 0x1694a0f5d2961c8b
+LAYOUT_HASH = 0xc39036ce6c8ab845
 LAYOUT_REVISION = 1
 SCHEMA_VERSION = 1
 
@@ -126,6 +126,62 @@ class FfbCommand:
         return {name: getattr(self, name) for name in self.FIELDS}
 
 
+@dataclass(slots=True)
+class TraceStep:
+    """One record per step, pushed by StepThread when --trace is on. The stamps bound the five phases of a step; the input fields carry which sample it consumed, so a re-used (stale) sample is visible as such rather than showing up as a suspiciously fast step."""
+
+    step_index: int = 0
+    input_host_time_ns: int = 0
+    input_sample_index: int = 0
+    t_step_start: int = 0
+    t_after_read: int = 0
+    t_after_shape: int = 0
+    t_after_plant: int = 0
+    t_after_ffb: int = 0
+    t_after_publish: int = 0
+
+    STRUCT: ClassVar[str] = "<QQQQQQQQQ"
+    SIZE: ClassVar[int] = 72
+    FIELDS: ClassVar[tuple[str, ...]] = ('step_index', 'input_host_time_ns', 'input_sample_index', 't_step_start', 't_after_read', 't_after_shape', 't_after_plant', 't_after_ffb', 't_after_publish')
+    UNITS: ClassVar[tuple[str, ...]] = ('-', 'ns', '-', 'ns', 'ns', 'ns', 'ns', 'ns', 'ns')
+
+    @classmethod
+    def unpack(cls, data: bytes) -> TraceStep:
+        return cls(*struct.unpack_from(cls.STRUCT, data, 0))
+
+    def pack(self) -> bytes:
+        return struct.pack(self.STRUCT, self.step_index, self.input_host_time_ns, self.input_sample_index, self.t_step_start, self.t_after_read, self.t_after_shape, self.t_after_plant, self.t_after_ffb, self.t_after_publish)
+
+    def as_dict(self) -> dict[str, float | int]:
+        return {name: getattr(self, name) for name in self.FIELDS}
+
+
+@dataclass(slots=True)
+class TraceDevice:
+    """One record per HidThread iteration, pushed when --trace is on. command_host_time_ns is the StepThread publish stamp the command carried, which is what joins a delivered torque back to the step that produced it."""
+
+    command_host_time_ns: int = 0
+    t_pickup: int = 0
+    t_after_apply: int = 0
+    sample_index: int = 0
+    flags: int = 0
+
+    STRUCT: ClassVar[str] = "<QQQQQ"
+    SIZE: ClassVar[int] = 40
+    FIELDS: ClassVar[tuple[str, ...]] = ('command_host_time_ns', 't_pickup', 't_after_apply', 'sample_index', 'flags')
+    UNITS: ClassVar[tuple[str, ...]] = ('ns', 'ns', 'ns', '-', '-')
+
+    @classmethod
+    def unpack(cls, data: bytes) -> TraceDevice:
+        return cls(*struct.unpack_from(cls.STRUCT, data, 0))
+
+    def pack(self) -> bytes:
+        return struct.pack(self.STRUCT, self.command_host_time_ns, self.t_pickup, self.t_after_apply, self.sample_index, self.flags)
+
+    def as_dict(self) -> dict[str, float | int]:
+        return {name: getattr(self, name) for name in self.FIELDS}
+
+
 class KernelId:
     """Which rung of the plant ladder produced a frame."""
 
@@ -156,6 +212,16 @@ class FfbFlags:
     RAMPING_DOWN = 2
     DISABLED = 4
     WATCHDOG_TRIPPED = 8
+
+
+class TraceFlags:
+    """What the device thread did with a command. A trace tool must keep these out of its latency percentiles: a rejected or stale command is a broken leg, and averaging it into a timing number reports a safety condition as a performance one."""
+
+    NONE = 0
+    COMMAND_FRESH = 1
+    COMMAND_STALE = 2
+    COMMAND_MISSING = 4
+    APPLY_FAILED = 8
 
 
 @dataclass(frozen=True, slots=True)

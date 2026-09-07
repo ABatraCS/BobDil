@@ -68,3 +68,25 @@ message FfbCommand {
   double damper_coeff = 4;
   uint64 flags = 5;
 }
+
+// One record per step, pushed by StepThread when --trace is on. The stamps bound the five phases of a step; the input fields carry which sample it consumed, so a re-used (stale) sample is visible as such rather than showing up as a suspiciously fast step.
+message TraceStep {
+  uint64 step_index = 1;
+  uint64 input_host_time_ns = 2;
+  uint64 input_sample_index = 3;
+  uint64 t_step_start = 4;
+  uint64 t_after_read = 5;
+  uint64 t_after_shape = 6;
+  uint64 t_after_plant = 7;
+  uint64 t_after_ffb = 8;
+  uint64 t_after_publish = 9;
+}
+
+// One record per HidThread iteration, pushed when --trace is on. command_host_time_ns is the StepThread publish stamp the command carried, which is what joins a delivered torque back to the step that produced it.
+message TraceDevice {
+  uint64 command_host_time_ns = 1;
+  uint64 t_pickup = 2;
+  uint64 t_after_apply = 3;
+  uint64 sample_index = 4;
+  uint64 flags = 5;
+}

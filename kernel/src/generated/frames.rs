@@ -4,7 +4,7 @@
 
 /// Fingerprint of the wire layout. Written into every shared-memory segment
 /// header so a stale reader refuses to attach rather than misreading bytes.
-pub const LAYOUT_HASH: u64 = 0x1694a0f5d2961c8b;
+pub const LAYOUT_HASH: u64 = 0xc39036ce6c8ab845;
 pub const LAYOUT_REVISION: u64 = 1;
 pub const SCHEMA_VERSION: u64 = 1;
 
@@ -381,6 +381,118 @@ impl FfbCommand {
     }
 }
 
+/// One record per step, pushed by StepThread when --trace is on. The stamps bound the five phases of a step; the input fields carry which sample it consumed, so a re-used (stale) sample is visible as such rather than showing up as a suspiciously fast step.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct TraceStep {
+    /// Joins to vehicle_state [-]
+    pub step_index: u64,
+    /// Stamp of the sample this step consumed; start of the input-age leg [ns]
+    pub input_host_time_ns: u64,
+    /// Unchanged from the previous step means the loop ran on a stale input [-]
+    pub input_sample_index: u64,
+    /// [ns]
+    pub t_step_start: u64,
+    /// Bounds the seqlock read [ns]
+    pub t_after_read: u64,
+    /// Bounds input_shaper [ns]
+    pub t_after_shape: u64,
+    /// Bounds plant.step -- the span Phase 0 cares about [ns]
+    pub t_after_plant: u64,
+    /// Bounds the conditioning chain [ns]
+    pub t_after_ffb: u64,
+    /// Bounds both seqlock publishes [ns]
+    pub t_after_publish: u64,
+}
+
+impl TraceStep {
+    pub const SIZE: usize = 72;
+    pub const FIELD_COUNT: usize = 9;
+    pub const FIELD_NAMES: [&'static str; 9] = [
+        "step_index",
+        "input_host_time_ns",
+        "input_sample_index",
+        "t_step_start",
+        "t_after_read",
+        "t_after_shape",
+        "t_after_plant",
+        "t_after_ffb",
+        "t_after_publish",
+    ];
+    pub const FIELD_UNITS: [&'static str; 9] = ["-", "ns", "-", "ns", "ns", "ns", "ns", "ns", "ns"];
+
+    /// Field by index, widened to f64. Used by telemetry and replay diffing
+    /// so neither has to know the field list.
+    pub fn field(&self, index: usize) -> f64 {
+        match index {
+            0 => self.step_index as f64,
+            1 => self.input_host_time_ns as f64,
+            2 => self.input_sample_index as f64,
+            3 => self.t_step_start as f64,
+            4 => self.t_after_read as f64,
+            5 => self.t_after_shape as f64,
+            6 => self.t_after_plant as f64,
+            7 => self.t_after_ffb as f64,
+            8 => self.t_after_publish as f64,
+            _ => f64::NAN,
+        }
+    }
+
+    /// True when every f64 field is finite. The plant-output guard that
+    /// gates force feedback depends on this being exhaustive.
+    pub fn is_finite(&self) -> bool {
+        true
+    }
+}
+
+/// One record per HidThread iteration, pushed when --trace is on. command_host_time_ns is the StepThread publish stamp the command carried, which is what joins a delivered torque back to the step that produced it.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct TraceDevice {
+    /// Join key -- equals trace_step.t_after_publish for the producing step [ns]
+    pub command_host_time_ns: u64,
+    /// When HidThread read the command [ns]
+    pub t_pickup: u64,
+    /// When the device had been handed the torque [ns]
+    pub t_after_apply: u64,
+    /// The HID sample this iteration took [-]
+    pub sample_index: u64,
+    /// See trace_flags enum -- a stale command is a broken leg, not a slow one [-]
+    pub flags: u64,
+}
+
+impl TraceDevice {
+    pub const SIZE: usize = 40;
+    pub const FIELD_COUNT: usize = 5;
+    pub const FIELD_NAMES: [&'static str; 5] = [
+        "command_host_time_ns",
+        "t_pickup",
+        "t_after_apply",
+        "sample_index",
+        "flags",
+    ];
+    pub const FIELD_UNITS: [&'static str; 5] = ["ns", "ns", "ns", "-", "-"];
+
+    /// Field by index, widened to f64. Used by telemetry and replay diffing
+    /// so neither has to know the field list.
+    pub fn field(&self, index: usize) -> f64 {
+        match index {
+            0 => self.command_host_time_ns as f64,
+            1 => self.t_pickup as f64,
+            2 => self.t_after_apply as f64,
+            3 => self.sample_index as f64,
+            4 => self.flags as f64,
+            _ => f64::NAN,
+        }
+    }
+
+    /// True when every f64 field is finite. The plant-output guard that
+    /// gates force feedback depends on this being exhaustive.
+    pub fn is_finite(&self) -> bool {
+        true
+    }
+}
+
 /// Which rung of the plant ladder produced a frame.
 pub mod kernel_id {
     pub const NONE: u64 = 0;
@@ -408,6 +520,15 @@ pub mod ffb_flags {
     pub const RAMPING_DOWN: u64 = 2;
     pub const DISABLED: u64 = 4;
     pub const WATCHDOG_TRIPPED: u64 = 8;
+}
+
+/// What the device thread did with a command. A trace tool must keep these out of its latency percentiles: a rejected or stale command is a broken leg, and averaging it into a timing number reports a safety condition as a performance one.
+pub mod trace_flags {
+    pub const NONE: u64 = 0;
+    pub const COMMAND_FRESH: u64 = 1;
+    pub const COMMAND_STALE: u64 = 2;
+    pub const COMMAND_MISSING: u64 = 4;
+    pub const APPLY_FAILED: u64 = 8;
 }
 
 /// Parameters exposed as FMI `tunable`, settable mid-session.

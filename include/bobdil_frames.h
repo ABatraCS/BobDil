@@ -4,7 +4,7 @@
 
 #include <stdint.h>
 
-#define BOBDIL_LAYOUT_HASH     0x1694a0f5d2961c8bULL
+#define BOBDIL_LAYOUT_HASH     0xc39036ce6c8ab845ULL
 #define BOBDIL_LAYOUT_REVISION 1
 #define BOBDIL_SCHEMA_VERSION  1
 
@@ -73,6 +73,30 @@ typedef struct {
 #define BOBDIL_FFB_COMMAND_SIZE 40
 #define BOBDIL_FFB_COMMAND_SHM "bobdil_ffb"
 
+/* One record per step, pushed by StepThread when --trace is on. The stamps bound the five phases of a step; the input fields carry which sample it consumed, so a re-used (stale) sample is visible as such rather than showing up as a suspiciously fast step. */
+typedef struct {
+    uint64_t step_index; /* [-] Joins to vehicle_state */
+    uint64_t input_host_time_ns; /* [ns] Stamp of the sample this step consumed; start of the input-age leg */
+    uint64_t input_sample_index; /* [-] Unchanged from the previous step means the loop ran on a stale input */
+    uint64_t t_step_start; /* [ns]  */
+    uint64_t t_after_read; /* [ns] Bounds the seqlock read */
+    uint64_t t_after_shape; /* [ns] Bounds input_shaper */
+    uint64_t t_after_plant; /* [ns] Bounds plant.step -- the span Phase 0 cares about */
+    uint64_t t_after_ffb; /* [ns] Bounds the conditioning chain */
+    uint64_t t_after_publish; /* [ns] Bounds both seqlock publishes */
+} bobdil_trace_step_t;
+#define BOBDIL_TRACE_STEP_SIZE 72
+
+/* One record per HidThread iteration, pushed when --trace is on. command_host_time_ns is the StepThread publish stamp the command carried, which is what joins a delivered torque back to the step that produced it. */
+typedef struct {
+    uint64_t command_host_time_ns; /* [ns] Join key -- equals trace_step.t_after_publish for the producing step */
+    uint64_t t_pickup; /* [ns] When HidThread read the command */
+    uint64_t t_after_apply; /* [ns] When the device had been handed the torque */
+    uint64_t sample_index; /* [-] The HID sample this iteration took */
+    uint64_t flags; /* [-] See trace_flags enum -- a stale command is a broken leg, not a slow one */
+} bobdil_trace_device_t;
+#define BOBDIL_TRACE_DEVICE_SIZE 40
+
 /* Which rung of the plant ladder produced a frame. */
 #define BOBDIL_KERNEL_ID_NONE 0ULL
 #define BOBDIL_KERNEL_ID_REDUCED14DOF 1ULL
@@ -95,5 +119,12 @@ typedef struct {
 #define BOBDIL_FFB_FLAGS_RAMPING_DOWN 2ULL
 #define BOBDIL_FFB_FLAGS_DISABLED 4ULL
 #define BOBDIL_FFB_FLAGS_WATCHDOG_TRIPPED 8ULL
+
+/* What the device thread did with a command. A trace tool must keep these out of its latency percentiles: a rejected or stale command is a broken leg, and averaging it into a timing number reports a safety condition as a performance one. */
+#define BOBDIL_TRACE_FLAGS_NONE 0ULL
+#define BOBDIL_TRACE_FLAGS_COMMAND_FRESH 1ULL
+#define BOBDIL_TRACE_FLAGS_COMMAND_STALE 2ULL
+#define BOBDIL_TRACE_FLAGS_COMMAND_MISSING 4ULL
+#define BOBDIL_TRACE_FLAGS_APPLY_FAILED 8ULL
 
 #endif /* BOBDIL_FRAMES_H */

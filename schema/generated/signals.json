@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "layout_revision": 1,
-  "layout_hash": "0x1694a0f5d2961c8b",
+  "layout_hash": "0xc39036ce6c8ab845",
   "frames": {
     "driver_input": {
       "shm_name": "bobdil_input",
@@ -374,6 +374,118 @@
         }
       ],
       "fmi_signals": {}
+    },
+    "trace_step": {
+      "shm_name": null,
+      "size_bytes": 72,
+      "fields": [
+        {
+          "name": "step_index",
+          "type": "u64",
+          "unit": "-",
+          "offset": 0,
+          "fmi": null
+        },
+        {
+          "name": "input_host_time_ns",
+          "type": "u64",
+          "unit": "ns",
+          "offset": 8,
+          "fmi": null
+        },
+        {
+          "name": "input_sample_index",
+          "type": "u64",
+          "unit": "-",
+          "offset": 16,
+          "fmi": null
+        },
+        {
+          "name": "t_step_start",
+          "type": "u64",
+          "unit": "ns",
+          "offset": 24,
+          "fmi": null
+        },
+        {
+          "name": "t_after_read",
+          "type": "u64",
+          "unit": "ns",
+          "offset": 32,
+          "fmi": null
+        },
+        {
+          "name": "t_after_shape",
+          "type": "u64",
+          "unit": "ns",
+          "offset": 40,
+          "fmi": null
+        },
+        {
+          "name": "t_after_plant",
+          "type": "u64",
+          "unit": "ns",
+          "offset": 48,
+          "fmi": null
+        },
+        {
+          "name": "t_after_ffb",
+          "type": "u64",
+          "unit": "ns",
+          "offset": 56,
+          "fmi": null
+        },
+        {
+          "name": "t_after_publish",
+          "type": "u64",
+          "unit": "ns",
+          "offset": 64,
+          "fmi": null
+        }
+      ],
+      "fmi_signals": {}
+    },
+    "trace_device": {
+      "shm_name": null,
+      "size_bytes": 40,
+      "fields": [
+        {
+          "name": "command_host_time_ns",
+          "type": "u64",
+          "unit": "ns",
+          "offset": 0,
+          "fmi": null
+        },
+        {
+          "name": "t_pickup",
+          "type": "u64",
+          "unit": "ns",
+          "offset": 8,
+          "fmi": null
+        },
+        {
+          "name": "t_after_apply",
+          "type": "u64",
+          "unit": "ns",
+          "offset": 16,
+          "fmi": null
+        },
+        {
+          "name": "sample_index",
+          "type": "u64",
+          "unit": "-",
+          "offset": 24,
+          "fmi": null
+        },
+        {
+          "name": "flags",
+          "type": "u64",
+          "unit": "-",
+          "offset": 32,
+          "fmi": null
+        }
+      ],
+      "fmi_signals": {}
     }
   },
   "enums": {
@@ -399,6 +511,13 @@
       "ramping_down": 2,
       "disabled": 4,
       "watchdog_tripped": 8
+    },
+    "trace_flags": {
+      "none": 0,
+      "command_fresh": 1,
+      "command_stale": 2,
+      "command_missing": 4,
+      "apply_failed": 8
     }
   },
   "tunables": [

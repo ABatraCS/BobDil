@@ -3,7 +3,7 @@
 class_name BobDilFrames
 extends RefCounted
 
-const LAYOUT_HASH: int = 1627102343048076427
+const LAYOUT_HASH: int = -4354920579455076283
 const LAYOUT_REVISION: int = 1
 const SCHEMA_VERSION: int = 1
 
@@ -75,6 +75,32 @@ const FFB_COMMAND_OFFSETS: Dictionary = {
 }
 const FFB_COMMAND_FLOAT_FIELDS: Array = ["torque_nm", "spring_coeff", "damper_coeff"]
 
+# One record per step, pushed by StepThread when --trace is on. The stamps bound the five phases of a step; the input fields carry which sample it consumed, so a re-used (stale) sample is visible as such rather than showing up as a suspiciously fast step.
+const TRACE_STEP_SIZE: int = 72
+const TRACE_STEP_OFFSETS: Dictionary = {
+	"step_index": 0,
+	"input_host_time_ns": 8,
+	"input_sample_index": 16,
+	"t_step_start": 24,
+	"t_after_read": 32,
+	"t_after_shape": 40,
+	"t_after_plant": 48,
+	"t_after_ffb": 56,
+	"t_after_publish": 64,
+}
+const TRACE_STEP_FLOAT_FIELDS: Array = []
+
+# One record per HidThread iteration, pushed when --trace is on. command_host_time_ns is the StepThread publish stamp the command carried, which is what joins a delivered torque back to the step that produced it.
+const TRACE_DEVICE_SIZE: int = 40
+const TRACE_DEVICE_OFFSETS: Dictionary = {
+	"command_host_time_ns": 0,
+	"t_pickup": 8,
+	"t_after_apply": 16,
+	"sample_index": 24,
+	"flags": 32,
+}
+const TRACE_DEVICE_FLOAT_FIELDS: Array = []
+
 const KERNEL_ID_NONE: int = 0
 const KERNEL_ID_REDUCED14DOF: int = 1
 const KERNEL_ID_VEHICLE_RT: int = 2
@@ -94,3 +120,9 @@ const FFB_FLAGS_ACTIVE: int = 1
 const FFB_FLAGS_RAMPING_DOWN: int = 2
 const FFB_FLAGS_DISABLED: int = 4
 const FFB_FLAGS_WATCHDOG_TRIPPED: int = 8
+
+const TRACE_FLAGS_NONE: int = 0
+const TRACE_FLAGS_COMMAND_FRESH: int = 1
+const TRACE_FLAGS_COMMAND_STALE: int = 2
+const TRACE_FLAGS_COMMAND_MISSING: int = 4
+const TRACE_FLAGS_APPLY_FAILED: int = 8

@@ -109,6 +109,46 @@ frames:
       - {name: damper_coeff,   type: f64, unit: N.m.s/rad}
       - {name: flags,          type: u64, unit: "-", doc: See ffb_flags enum}
 
+  # --- diagnostics -------------------------------------------------------
+  # These two are ring and file records, not shared-memory segments, so they
+  # carry no shm_name. They exist because architecture.md 5.6 states a
+  # round-trip latency budget that nothing else here measures: step time is one
+  # span in the middle of the chain, and a fast step that hands the wheel a
+  # stale torque is a rig that feels rubber-banded with every published number
+  # looking healthy.
+  #
+  # Absolute u64 nanoseconds rather than packed deltas because the schema's
+  # types are 64-bit only, and at 1 kHz the whole trace is ~120 KB/s.
+
+  trace_step:
+    doc: >-
+      One record per step, pushed by StepThread when --trace is on. The stamps
+      bound the five phases of a step; the input fields carry which sample it
+      consumed, so a re-used (stale) sample is visible as such rather than
+      showing up as a suspiciously fast step.
+    fields:
+      - {name: step_index,          type: u64, unit: "-",  doc: Joins to vehicle_state, so a slow step can be found in telemetry}
+      - {name: input_host_time_ns,  type: u64, unit: ns,   doc: Stamp of the sample this step consumed; start of the input-age leg}
+      - {name: input_sample_index,  type: u64, unit: "-",  doc: Unchanged from the previous step means the loop ran on a stale input}
+      - {name: t_step_start,        type: u64, unit: ns}
+      - {name: t_after_read,        type: u64, unit: ns,   doc: Bounds the seqlock read}
+      - {name: t_after_shape,       type: u64, unit: ns,   doc: Bounds input_shaper}
+      - {name: t_after_plant,       type: u64, unit: ns,   doc: Bounds plant.step -- the span Phase 0 cares about}
+      - {name: t_after_ffb,         type: u64, unit: ns,   doc: Bounds the conditioning chain}
+      - {name: t_after_publish,     type: u64, unit: ns,   doc: Bounds both seqlock publishes}
+
+  trace_device:
+    doc: >-
+      One record per HidThread iteration, pushed when --trace is on.
+      command_host_time_ns is the StepThread publish stamp the command carried,
+      which is what joins a delivered torque back to the step that produced it.
+    fields:
+      - {name: command_host_time_ns, type: u64, unit: ns,  doc: Join key -- equals trace_step.t_after_publish for the producing step}
+      - {name: t_pickup,             type: u64, unit: ns,  doc: When HidThread read the command}
+      - {name: t_after_apply,        type: u64, unit: ns,  doc: When the device had been handed the torque}
+      - {name: sample_index,         type: u64, unit: "-", doc: The HID sample this iteration took}
+      - {name: flags,                type: u64, unit: "-", doc: "See trace_flags enum -- a stale command is a broken leg, not a slow one"}
+
 enums:
   kernel_id:
     doc: Which rung of the plant ladder produced a frame.
@@ -127,6 +167,14 @@ enums:
   ffb_flags:
     doc: State of the feedback path.
     values: {none: 0, active: 1, ramping_down: 2, disabled: 4, watchdog_tripped: 8}
+
+  trace_flags:
+    doc: >-
+      What the device thread did with a command. A trace tool must keep these
+      out of its latency percentiles: a rejected or stale command is a broken
+      leg, and averaging it into a timing number reports a safety condition as
+      a performance one.
+    values: {none: 0, command_fresh: 1, command_stale: 2, command_missing: 4, apply_failed: 8}
 
 # Parameters exposed as FMI 2.0 `tunable`, settable mid-session (1.9).
 # Structural changes (hardpoints, topology) are not here -- those recompile.
