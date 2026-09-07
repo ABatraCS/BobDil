@@ -58,7 +58,7 @@ loop will actually get.
 | Group | Targets | Means |
 | --- | --- | --- |
 | **testing** | `test` `test-python` `test-kernel` `test-kernel-sdl3` `lint` `codegen-check` | Hermetic. Same answer on any machine. Safe in CI. |
-| **validation** | `validate` `doctor` `selftest` `bench` `record` `replay-check` `view-check` | Measures *this* box: its clock, its scheduler, its OS. **The numbers do not travel.** |
+| **validation** | `validate` `doctor` `selftest` `bench` `record` `replay-check` `view-check` `trace` | Measures *this* box: its clock, its scheduler, its OS. **The numbers do not travel.** |
 | **model** | `rt-bench` `ab-paired` | Measures the *model*: structural work per step, largest stable step, what a setup change does. These numbers do travel. |
 | **production** | `build` `codegen` `fixture-fmu` `vehicle-fmu` `drive` `view` `release` | Artefacts, and driving the rig. |
 
@@ -92,6 +92,7 @@ codegen/      the five emitters
 kernel/       Rust. Soft-real-time. No crates. Never blocks.
 session/      Python. Everything allowed to be slow: compile, configure, A/B.
 tools/rt_bench/  Phase 0: is a model steppable at all?
+tools/roundtrip/ where round-trip latency goes, from a --trace .bdtrace
 view/         Godot 4. Read-only view of the state segment, by construction.
 modelica/     BobDil's own Modelica. Depends on no library, so it builds anywhere.
 docker/       the two toolchains

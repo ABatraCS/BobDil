@@ -178,6 +178,7 @@ make doctor          # first thing in a new session: what is missing and what it
 make selftest        # SAFETY. Five checks. Run before a person touches a wheel.
 make rt-bench        # Phase 0's model half: is this thing steppable at all?
 make ab-paired       # one lap, two setups, diffed
+make trace           # where the round trip spends its time (this box only)
 make drive-fixture   # drives the real OpenModelica FMU, not the reduced plant
 ```
 
@@ -417,6 +418,21 @@ with `fmu_build.BOBDIL_ONLY` for the fixture.
   there is no `PR_SET_PDEATHSIG` anywhere — and `SIGKILL` cannot be caught, so
   that case relies on the OS dropping the effect when the fd closes, untested
   on hardware. Add the `prctl` call or narrow the comment.
+- **The round-trip trace does not cover the UI leg.** `make trace` measures
+  sample -> step -> torque and says so, but the state frame -> pixels half is
+  missing: the Godot view opens the state segment `READ` and physically cannot
+  write, so stamping it means giving the view a write path to something. That is
+  a decision worth making deliberately rather than as a footnote, and at 60 Hz
+  the view's frame pacing (~16 ms) will dominate every number the trace prints
+  today. The seam is documented in
+  `docs/superpowers/specs/2026-09-06-roundtrip-trace-design.md`.
+- **The trace has never been run against real hardware.** Every number it has
+  produced so far came from the scripted null device, whose "poll" is a function
+  call. The two large terms it currently reports — input age and
+  publish-to-pickup, together ~99% of the round trip — are the 1 kHz poll period
+  of a device thread that is not talking to a wheel. Real USB will change both,
+  and 5.6's estimate is that the hardware half of the budget is the larger one.
+  **Do not quote the current round-trip figure as a property of the rig.**
 - No Windows path has been exercised at all. `shm.rs` and `sched.rs` are POSIX.
 - The Godot view has only ever been exercised headless (`make view-check`), so
   the cone layouts are code, not something anyone has seen drawn (§4 item 6).

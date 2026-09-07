@@ -150,6 +150,8 @@ session/bobdil/              Python. Everything with no deadline.
   doctor.py, toolchain.py      what is installed and what each gap costs
 
 tools/rt_bench/              Python. Phase 0: is this model steppable at all?
+tools/roundtrip/             Python. Where the time goes, sample -> torque.
+                             Reads the .bdtrace that `--trace` writes.
 view/scripts/                GDScript. Driver POV. Reads physics, never writes it.
 modelica/BobDil/             the 5-state fixture plant, for testing the FMI path
 docker/                      the toolchain this host does not have
@@ -214,6 +216,7 @@ to wait on hardware or on a disk.
 | a `python -m bobdil` verb | `session/bobdil/cli.py` |
 | the A/B statistics | `session/bobdil/ab.py`, with `tests/test_ab.py` next to it |
 | what Phase 0 measures | `tools/rt_bench/structure.py` and `eigen.py` |
+| where round-trip latency goes | `tools/roundtrip/spans.py`, and `kernel/src/telemetry/trace.rs` for what is stamped |
 | a `make` target | `makefile` — it is the only entry point, and it is commented |
 
 Two rules that will bite you if you skip them, both spelled out in
@@ -298,6 +301,46 @@ drivable at 1 kHz**, which is the argument for `VehicleRT` (Phase 6). The
 stability sweep is the one number still owed, and it is blocked in `omc` rather
 than here — see [`HANDOFF.md`](HANDOFF.md) §4 item 0 for what has already been
 ruled out.
+
+---
+
+## Where the time goes
+
+`bench` answers "can this machine hold the deadline". It cannot answer the
+question [`docs/architecture.md`](docs/architecture.md) 5.6 actually poses,
+which is what the *driver* waits for: a step that costs 14 us inside a loop
+handing the wheel a 1 ms old torque is a rig that feels rubber-banded while
+every published number looks perfect.
+
+```bash
+make trace                          # drive the scripted input, then summarise
+python -m roundtrip lap.bdtrace -o lap.json   # and a flamegraph for Perfetto
+```
+
+Tracing is **off by default** and costs one predictable branch per phase when
+off. With `--trace` it is five extra clock reads per step, ~125 ns against a
+1 ms budget.
+
+On the machine this was written on, over 3 s:
+
+```
+  input age (sample -> step)          696.3 us      <- the 1 kHz HID poll
+    plant                              13.1
+  step total                           14.2         <- all the kernel does
+  publish -> device pickup            291.0 us      <- the 1 kHz HID poll again
+  ROUND TRIP (sample -> torque)      1000.8 us
+```
+
+Both large terms are device-thread poll phase, not the physics. That is the
+kind of finding `step_time_us` cannot produce, because it reports 14.2 us and
+is entirely correct.
+
+**What it does not measure.** The UI leg — state frame in `/dev/shm` to pixels
+— is not included: the Godot view opens the segment `READ` and cannot write, so
+stamping it is a change worth making on its own. At 60 Hz it will dominate
+these numbers when it lands. USB and wheel firmware, roughly half the budget by
+5.6's own estimate, are not observable from this side at all. A trace measures
+*this box* and its numbers do not travel.
 
 ---
 
