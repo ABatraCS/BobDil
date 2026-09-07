@@ -48,7 +48,8 @@ class Field:
 class Frame:
     name: str
     doc: str
-    shm_name: str
+    #: None for frames that are ring or file records rather than shm segments.
+    shm_name: str | None
     fields: tuple[Field, ...]
 
     @property
@@ -152,14 +153,19 @@ def _build_frame(name: str, spec: Mapping[str, Any], types: Mapping[str, Any]) -
             )
         )
 
+    # A frame is not necessarily a shared-memory segment. The trace records
+    # are ring and file records, and giving one a segment name it does not have
+    # would be a falsehood in the file everything else treats as the truth.
+    # Absent means "no segment"; present-but-empty means someone meant to name
+    # one and got it wrong, which is still an error.
     shm_name = spec.get("shm_name")
-    if not shm_name:
-        raise SchemaError(f"frame {name!r} has no shm_name")
+    if shm_name is not None and not str(shm_name).strip():
+        raise SchemaError(f"frame {name!r} has an empty shm_name")
 
     return Frame(
         name=name,
         doc=" ".join(str(spec.get("doc", "")).split()),
-        shm_name=str(shm_name),
+        shm_name=str(shm_name) if shm_name is not None else None,
         fields=tuple(fields),
     )
 

@@ -47,7 +47,8 @@ def render(schema: Schema) -> str:
         out.append("")
         out.append(f'    STRUCT: ClassVar[str] = "{fmt}"')
         out.append(f"    SIZE: ClassVar[int] = {frame.size_bytes}")
-        out.append(f'    SHM_NAME: ClassVar[str] = "{frame.shm_name}"')
+        if frame.shm_name is not None:
+            out.append(f'    SHM_NAME: ClassVar[str] = "{frame.shm_name}"')
         out.append(f"    FIELDS: ClassVar[tuple[str, ...]] = {tuple(names)!r}")
         out.append(
             f"    UNITS: ClassVar[tuple[str, ...]] = {tuple(f.unit for f in frame.fields)!r}"

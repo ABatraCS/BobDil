@@ -32,7 +32,8 @@ def render(schema: Schema) -> str:
             out.append(f"    {schema.c_type(field)} {field.name};{comment}")
         out.append(f"}} bobdil_{frame.name}_t;")
         out.append(f"#define BOBDIL_{frame.name.upper()}_SIZE {frame.size_bytes}")
-        out.append(f'#define BOBDIL_{frame.name.upper()}_SHM "{frame.shm_name}"')
+        if frame.shm_name is not None:
+            out.append(f'#define BOBDIL_{frame.name.upper()}_SHM "{frame.shm_name}"')
         out.append("")
     for enum in schema.enums:
         out.append(f"/* {enum.doc} */")

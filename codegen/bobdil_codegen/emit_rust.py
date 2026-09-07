@@ -39,7 +39,10 @@ def _struct(schema: Schema, frame: Frame) -> str:
     lines.append(f"impl {frame.pascal_name} {{")
     lines.append(f"    pub const SIZE: usize = {frame.size_bytes};")
     lines.append(f"    pub const FIELD_COUNT: usize = {count};")
-    lines.append(f'    pub const SHM_NAME: &\'static str = "{frame.shm_name}";')
+    # Ring and file records have no segment, and a `SHM_NAME` naming one
+    # that does not exist would compile fine and mislead every reader.
+    if frame.shm_name is not None:
+        lines.append(f'    pub const SHM_NAME: &\'static str = "{frame.shm_name}";')
     lines.append(_array("    ", f"pub const FIELD_NAMES: [&'static str; {count}]", names))
     lines.append(_array("    ", f"pub const FIELD_UNITS: [&'static str; {count}]", units))
     lines.append("")

@@ -37,7 +37,8 @@ def render(schema: Schema) -> str:
     for frame in schema.frames:
         upper = frame.name.upper()
         out.append(f"# {frame.doc}")
-        out.append(f'const {upper}_SHM: String = "{frame.shm_name}"')
+        if frame.shm_name is not None:
+            out.append(f'const {upper}_SHM: String = "{frame.shm_name}"')
         out.append(f"const {upper}_SIZE: int = {frame.size_bytes}")
         out.append(f"const {upper}_OFFSETS: Dictionary = {{")
         for field in frame.fields:
