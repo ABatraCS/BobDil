@@ -410,13 +410,13 @@ with `fmu_build.BOBDIL_ONLY` for the fixture.
 - The default `--torque-limit 8` clamps the reduced plant's steering torque a
   lot during the aggressive probe maneuver (reported as `FFB_CLAMPED`, correctly).
   Real driving inputs are far gentler; revisit with a real wheel.
-- **Nothing zeroes the wheel on a signal.** `io/watchdog.rs`'s rule 4 claims
-  torque is zeroed on "clean shutdown, panic, signal, and the parent process
-  dying", but the only mechanism is `impl Drop for SdlDevice`. There is no
-  signal handler and no `PR_SET_PDEATHSIG`, so a `SIGTERM`ed or `SIGKILL`ed
-  session is relying on the OS to drop the effect when the fd closes — which is
-  probably what happens on Linux, and has never been tested on hardware. Either
-  install the handler or correct the comment; do not leave the two disagreeing.
+- **Two thirds of safety rule 4 is implemented.** `sys/signals.rs` installs
+  SIGINT/SIGTERM/SIGHUP handlers and `loop_runner.rs:284` breaks the loop on
+  them, so those exits zero the wheel through `Drop`. But `io/watchdog.rs`'s
+  rule 4 also claims "the parent process dying", and nothing implements that —
+  there is no `PR_SET_PDEATHSIG` anywhere — and `SIGKILL` cannot be caught, so
+  that case relies on the OS dropping the effect when the fd closes, untested
+  on hardware. Add the `prctl` call or narrow the comment.
 - No Windows path has been exercised at all. `shm.rs` and `sched.rs` are POSIX.
 - The Godot view has only ever been exercised headless (`make view-check`), so
   the cone layouts are code, not something anyone has seen drawn (§4 item 6).

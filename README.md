@@ -41,6 +41,10 @@ make drive      # DRIVE IT (runs the safety self-test first, and refuses if it f
 `make help` is the authoritative target list. Everything goes through the
 makefile, which handles `PATH` and the venv itself.
 
+New to the repo? [**Where to look for what**](#where-to-look-for-what) below is
+the map: what each directory is for, what happens in one millisecond of the
+loop, and which file to open for the change you have in mind.
+
 ### Two front doors
 
 The **kernel** has its own command line and keeps it, because it is the thing
@@ -117,6 +121,105 @@ the parts of the original spec that did not survive contact (§5).
 
 ---
 
+## Where to look for what
+
+Four languages sit in this repo and each one has exactly one job. If you read
+nothing else, read this section — it is the map.
+
+```
+schema/bobdil_signals.yaml   EVERY signal that crosses a boundary. Start here.
+codegen/bobdil_codegen/      turns that file into the Rust, C, Python, GDScript,
+                             .proto and JSON bindings. Never hand-edit anything
+                             under a generated/ directory -- `make codegen-check`
+                             fails the build if you do.
+
+kernel/src/                  Rust. The only thing with a deadline.
+  loop_runner.rs               the 1 kHz loop itself: threads, clock, deadlines
+  plant/                       physics. ladder.rs picks, reduced/ is the floor,
+                               fmu_me.rs runs a Modelica FMU, integrator.rs steps
+  io/                          the wheel. watchdog.rs is the safety contract
+  transport/                   how frames leave: seqlock.rs (latest wins),
+                               spsc_ring.rs (lossless, for telemetry)
+  telemetry/                   .bdt recording (replay.rs, alongside, re-runs one)
+  sys/                         the OS: clock, scheduling, /dev/shm, dlopen, signals
+
+session/bobdil/              Python. Everything with no deadline.
+  cli.py                       `python -m bobdil` -- the six verbs
+  fmu_build.py, manifest.py    Modelica -> FMU -> something the kernel can load
+  ab.py                        paired and blind A/B, and the refusals
+  doctor.py, toolchain.py      what is installed and what each gap costs
+
+tools/rt_bench/              Python. Phase 0: is this model steppable at all?
+view/scripts/                GDScript. Driver POV. Reads physics, never writes it.
+modelica/BobDil/             the 5-state fixture plant, for testing the FMI path
+docker/                      the toolchain this host does not have
+tests/                       Python tests. The Rust ones live beside their code.
+```
+
+**Every module opens with a comment saying why it exists**, not what it does.
+`head -20` on any file in `kernel/src/` or `session/bobdil/` is usually faster
+than reading the code.
+
+### One millisecond, end to end
+
+The clearest way to understand the kernel is to follow one step. Three threads:
+the step thread owns the deadline, and the other two exist so that it never has
+to wait on hardware or on a disk.
+
+1. **`io/hid.rs`** — the device thread — samples the wheel and pedals through
+   **`io/sdl3.rs`** and publishes a `DriverInput` into a seqlock. It is a
+   separate thread because a USB transaction can block for milliseconds, and
+   the plant must never wait on one.
+2. **`loop_runner.rs`** — the step thread — wakes on an absolute deadline
+   (**`sys/clock.rs`**) and reads the *newest* input: never a queue, never a
+   wait, so a slow device costs freshness rather than time. It then shapes the
+   steering reference (**`io/input_shaper.rs`**) so the plant is handed an
+   angle, a rate and an acceleration that are genuinely derivatives of one
+   another.
+3. It advances the plant chosen at session start by **`plant/ladder.rs`**,
+   using the fixed-step integrator in **`plant/integrator.rs`**. A non-finite
+   state ends the session — and publishes a silent feedback command on its way
+   out, so the wheel goes slack the instant the physics is known to be bad.
+4. The new state is dead-reckoned into a global position (**`pose.rs`**), and
+   the step is judged against its deadline. That verdict is an input to the
+   feedback watchdog: a loop that is not keeping up must not keep pushing
+   torque as though nothing were wrong.
+5. The reaction torque is conditioned and clamped by **`io/ffb.rs`** under the
+   four rules in **`io/watchdog.rs`**, then published. The device thread picks
+   it up and applies it, with its own staleness watchdog as the last thing
+   between the kernel and the hardware.
+6. The frame is published to `/dev/shm`, where the Godot view reads it
+   (**`transport/seqlock.rs`** ↔ **`view/scripts/state_link.gd`**), and pushed
+   into a lossless ring (**`transport/spsc_ring.rs`**) that a third thread
+   drains to disk (**`telemetry/recorder.rs`**). A rejected push is a recorded
+   fault, never a silent drop.
+7. Health — step time, realtime factor, faults — is measured rather than
+   assumed (**`metrics.rs`**) and rides inside the frame itself. Then the loop
+   sleeps until the next millisecond boundary; if it is already late it
+   re-anchors and reports, rather than bursting to catch up and quietly
+   changing its own timescale.
+
+### If you want to change
+
+| this | open this first |
+| --- | --- |
+| a signal anything else can see | `schema/bobdil_signals.yaml`, then `make codegen` |
+| the loop, threading, or deadline policy | `kernel/src/loop_runner.rs` |
+| the built-in vehicle physics | `kernel/src/plant/reduced/` (`tire.rs` is where the grip lives) |
+| how a Modelica FMU is stepped | `kernel/src/plant/fmu_me.rs`, over `fmi2.rs` |
+| which plant a session runs | `kernel/src/plant/ladder.rs` |
+| **anything that reaches the wheel** | `kernel/src/io/watchdog.rs` — read all four rules before touching `ffb.rs` |
+| what the driver sees | `view/scripts/driver_view.gd`, `events.gd` for the cone layouts |
+| how a vehicle gets compiled | `session/bobdil/fmu_build.py` and `manifest.py` |
+| a `python -m bobdil` verb | `session/bobdil/cli.py` |
+| the A/B statistics | `session/bobdil/ab.py`, with `tests/test_ab.py` next to it |
+| what Phase 0 measures | `tools/rt_bench/structure.py` and `eigen.py` |
+| a `make` target | `makefile` — it is the only entry point, and it is commented |
+
+Two rules that will bite you if you skip them, both spelled out in
+[`AGENTS.md`](AGENTS.md): generated code is never hand-edited, and BobLib and
+BobSim are read-only inputs that nothing here may write to.
+
 ## Safety
 
 A direct-drive wheel delivers enough torque to break a wrist. This is treated as
@@ -128,10 +231,12 @@ safety-critical code, not as a rendering concern:
   deadlines start slipping, and one on the device thread rejects a command that
   has gone stale, so a step thread that stops publishing entirely still leaves
   the wheel slack rather than locked solid.
-- The device is zeroed on every exit path the process can run code on — clean
-  shutdown, panic, `Drop`. There is **no signal handler**, so `SIGKILL` (and
-  `SIGTERM`) fall back to whatever the OS does when the device fd closes; that
-  has not been tested on hardware, and nothing here should be relied on for it.
+- The device is zeroed on every exit path the process can run code on: clean
+  shutdown, panic, `Drop`, and `SIGINT`/`SIGTERM`/`SIGHUP`, which
+  `sys/signals.rs` catches and turns into a clean stop — a driver reaching for
+  Ctrl-C is an exit path too. `SIGKILL` cannot be caught by anything, so there
+  it falls to the OS dropping the effect when the device fd closes; that has
+  never been tested on hardware.
 - `--torque-limit` defaults to 8 N·m and is opt-in-raised, never opt-out-lowered.
 - `make selftest` exercises all of it adversarially. `python -m bobdil drive`
   runs it first and refuses to drive if it fails.
@@ -244,4 +349,5 @@ Nothing here writes to either.
 | [`docs/architecture.md`](docs/architecture.md) | the design, and why each decision went the way it did |
 | [`HANDOFF.md`](HANDOFF.md) | what is built, what is left, what was learned the hard way |
 | [`AGENTS.md`](AGENTS.md) | the rules that are load-bearing when changing this repo |
+| the header comment on any module | why that file exists at all — they are written for exactly this |
 | `make help` | the authoritative list of what you can actually run |
